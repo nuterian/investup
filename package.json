@@ -1,0 +1,23 @@
+{
+  "name": "web-search-project",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nuterian/web-search-project.git"
+  },
+  "author": "Jugal Manjeshwar",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nuterian/web-search-project/issues"
+  },
+  "homepage": "https://github.com/nuterian/web-search-project",
+  "dependencies": {
+    "express": "^4.12.3",
+    "jade": "^1.9.2"
+  }
+}
