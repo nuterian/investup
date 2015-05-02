@@ -22,20 +22,20 @@ function score(a, keys) {
             if( b == k ) {
                 score += 10;
                 if(i == j) {
-                    score += 5;
+                    score += 3;
                 }
                 else {
-                    score -= 10;
+                    score -= 1;
                 }
             }
             else if(b.indexOf(k) > -1) {
                 score += 3;
                 if(i == j) {
-                    score += 3;
+                    score += 2;
                 }
             }
             else {
-                score -= Math.abs(b.length - k.length);
+                score -= 1;//Math.abs(b.length - k.length);
             }
         });
     });
