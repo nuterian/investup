@@ -10,6 +10,42 @@ app.get('/', function (req, res) {
     res.render('index');
 });
 
+function score(a, keys) {
+    var score = 0;
+
+    a = a.toLowerCase();
+    a = a.replace(/\W+/g, ' '); //Convert all non-word characters to spaces.
+    _a = a.split(' ');
+
+    keys.forEach(function(k, i) {
+        _a.forEach(function(b, j){
+            if( b == k ) {
+                score += 10;
+                if(i == j) {
+                    score += 5;
+                }
+                else {
+                    score -= 10;
+                }
+            }
+            else if(b.indexOf(k) > -1) {
+                score += 3;
+                if(i == j) {
+                    score += 3;
+                }
+            }
+            else {
+                score -= Math.abs(b.length - k.length);
+            }
+        });
+    });
+
+    var diff = Math.abs(_a.length - keys.length);
+    score -= diff;
+
+    return score;
+}
+
 app.get('/companies', function(req, res) {
     var q = req.query.q;
     var s = req.query.s || 0;
@@ -19,15 +55,17 @@ app.get('/companies', function(req, res) {
     }
 
     var _q = q.toLowerCase();
+    var _keys = _q.split(' ');
+    
     var r = companies.filter(function(c) {
-        var qSplit = _q.split(" ");
-        for(var i in qSplit) {                   
-            if (c.n.toLowerCase().indexOf(qSplit[i]) > -1) {                
+        for(var i = 0; i < _keys.length; i++) {
+            if (_keys[i].length > 2 && c.n.toLowerCase().indexOf(_keys[i]) > -1) {                
                 return true;
-            }
+            }            
         }
-        return false;        
+        return false;  
     });
+
 
     if(s === 1) {
         r = r.map(function(c) {
@@ -36,101 +74,15 @@ app.get('/companies', function(req, res) {
     }
 
     r.sort(function(a,b) {
-        var _a = a.n.toLowerCase();
-        var _b = b.n.toLowerCase();        
-        if(_a === _q) {            
-            return -1;            
-        }
+        var sa = score(a.n, _keys);
+        var sb = score(b.n, _keys);
 
-        if(_b === _q) {            
-            return 1;
-        }
-
-        var qSplit = _q.split(" ");
-        var countA = 0;
-        var countB = 0;
-        var exactMatch = 0;
-        var qLength = qSplit.length;
-        var weightA = 0;
-        var weightB = 0;
-        for(var i in qSplit) {
-
-            if(_a === qSplit[i]) {            
-                exactMatch = -1;            
-            }
-
-            if(_b === qSplit[i]) {            
-                exactMatch = 1;
-            }
-            var re = new RegExp('\\b' + qSplit[i] + '\\b', 'i');
-
-            var testA = re.test(_a);
-            var testB = re.test(_b);
-
-            if(testA) {            
-                countA++;
-                weightA += qLength - i;
-            }
-
-            if(testB) {            
-                countB++;
-                weightB += qLength - i;
-            }       
-        }        
-
-        if(countA > countB) {
-            return -1;        
-        }
-        if(countA < countB) {
-            return 1;
-        }
-
-        if(exactMatch != 0) {
-            return exactMatch;
-        }
-
-        if (weightA > weightB) {
+        if(sa > sb) {
             return -1;
         }
-        if (weightA < weightB) {
+        else if(sa < sb) {
             return 1;
         }
-
-        var aIndex = _a.indexOf(_q);
-        var bIndex = _b.indexOf(_q);
-
-        if(aIndex < bIndex) {            
-            return -1;
-        }
-        else if(aIndex > bIndex) {            
-            return 1;
-        }
-
-        var re = new RegExp('\\b' + _q + '\\b', 'i');
-
-        var testA = re.test(_a);
-        var testB = re.test(_b);
-
-        if(testA && testB) {
-            return _a.localeCompare(_b);
-        }
-        if(testA) {            
-            return -1;
-        }
-
-        if(testB) {            
-            return 1;
-        }
-
-        var adiff = Math.abs(q.length - _a.length);
-        var bdiff = Math.abs(q.length - _b.length);
-
-        if(adiff < bdiff) {            
-            return -1;
-        }
-        else if(adiff > bdiff) {            
-            return 1;
-        }        
         return 0;
     });
 

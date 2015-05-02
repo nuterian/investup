@@ -12,7 +12,7 @@ var CompanyRow = React.createClass({displayName: "CompanyRow",
 var CompanyList = React.createClass({displayName: "CompanyList",
     render: function() {
         var rows = [],
-        	to = Math.min(this.props.companies.length, 30);
+        	to = Math.min(this.props.companies.length, 10);
         for( var i = 0; i < to; i++) {
         	var company = this.props.companies[i];
         	rows.push(React.createElement(CompanyRow, {company: company}));
@@ -32,7 +32,7 @@ var SearchBar = React.createClass({displayName: "SearchBar",
 	},
 
     componentWillMount: function() {
-    	this.handleKeyDown = _.debounce(this.handleKeyDown, 200);
+    	this.handleKeyDown = _.debounce(this.handleKeyDown, 300);
     },
 
     render: function() {
