@@ -20,7 +20,13 @@ app.get('/companies', function(req, res) {
 
     var _q = q.toLowerCase();
     var r = companies.filter(function(c) {
-        return c.n.toLowerCase().indexOf(_q) > -1;
+        var qSplit = _q.split(" ");
+        for(var i in qSplit) {                   
+            if (c.n.toLowerCase().indexOf(qSplit[i]) > -1) {                
+                return true;
+            }
+        }
+        return false;        
     });
 
     if(s === 1) {
@@ -31,44 +37,100 @@ app.get('/companies', function(req, res) {
 
     r.sort(function(a,b) {
         var _a = a.n.toLowerCase();
-        var _b = b.n.toLowerCase();
-
-        if(_a === _q) {
-            return -1;
+        var _b = b.n.toLowerCase();        
+        if(_a === _q) {            
+            return -1;            
         }
 
-        if(_b === _q) {
+        if(_b === _q) {            
+            return 1;
+        }
+
+        var qSplit = _q.split(" ");
+        var countA = 0;
+        var countB = 0;
+        var exactMatch = 0;
+        var qLength = qSplit.length;
+        var weightA = 0;
+        var weightB = 0;
+        for(var i in qSplit) {
+
+            if(_a === qSplit[i]) {            
+                exactMatch = -1;            
+            }
+
+            if(_b === qSplit[i]) {            
+                exactMatch = 1;
+            }
+            var re = new RegExp('\\b' + qSplit[i] + '\\b', 'i');
+
+            var testA = re.test(_a);
+            var testB = re.test(_b);
+
+            if(testA) {            
+                countA++;
+                weightA += qLength - i;
+            }
+
+            if(testB) {            
+                countB++;
+                weightB += qLength - i;
+            }       
+        }        
+
+        if(countA > countB) {
+            return -1;        
+        }
+        if(countA < countB) {
+            return 1;
+        }
+
+        if(exactMatch != 0) {
+            return exactMatch;
+        }
+
+        if (weightA > weightB) {
+            return -1;
+        }
+        if (weightA < weightB) {
             return 1;
         }
 
         var aIndex = _a.indexOf(_q);
         var bIndex = _b.indexOf(_q);
 
-        if(aIndex < bIndex) {
+        if(aIndex < bIndex) {            
             return -1;
         }
-        else if(aIndex > bIndex) {
+        else if(aIndex > bIndex) {            
             return 1;
         }
 
         var re = new RegExp('\\b' + _q + '\\b', 'i');
-        if(re.test(_a)) {
+
+        var testA = re.test(_a);
+        var testB = re.test(_b);
+
+        if(testA && testB) {
+            return _a.localeCompare(_b);
+        }
+        if(testA) {            
             return -1;
         }
 
-        if(re.test(_b)) {
+        if(testB) {            
             return 1;
         }
 
         var adiff = Math.abs(q.length - _a.length);
         var bdiff = Math.abs(q.length - _b.length);
 
-        if(adiff < bdiff) {
+        if(adiff < bdiff) {            
             return -1;
         }
-        else if(adiff > bdiff) {
+        else if(adiff > bdiff) {            
             return 1;
-        }
+        }        
         return 0;
     });
 
