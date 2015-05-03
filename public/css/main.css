@@ -1,3 +1,7 @@
+body {
+    font-family: 'Roboto', Arial, 'Helvetica Neue', Helvetica, sans-serif;
+}
+
 .wrapper {
     width: 1000px;
     margin: 0 auto;
@@ -142,7 +146,7 @@ fieldset[disabled] .btn-default.active {
   border-color: #ccc;
 }
 
-.list-wrapper{
+.content-wrapper{
     padding-left: 145px;
 }
 
@@ -156,6 +160,8 @@ ul.company-list {
 }
 
 .company-name {
+    max-width: 800px;
+    text-overflow: ellipsis;
 }
 
 .company-name a:link, .company-name a {
@@ -249,7 +255,7 @@ ul.company-list {
 
 .page-link {
     color: #000;
-    font-weight:bold;
+    font-weight:700;
     padding: 4px 7px;
     min-width: 27px;
     text-align:center;

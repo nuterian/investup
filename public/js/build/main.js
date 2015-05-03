@@ -6,7 +6,7 @@ var CompanyThumbnail = React.createClass({displayName: "CompanyThumbnail",
 	getInitialState: function() {
 		return {
 			status: 'loading'
-		}
+		};
 	},
 
 	componentWillMount: function(){
@@ -66,12 +66,12 @@ var CompanyRow = React.createClass({displayName: "CompanyRow",
     render: function() {
     	var maxThumbSize = 40;
         return (
-                React.createElement("li", {className: "company-list-item row"}, 
-                	React.createElement("div", {className: "company-item-img col"}, 
-                		React.createElement(CompanyThumbnail, {src: this.props.company.i, maxSize: maxThumbSize})
-                	), 
-                	React.createElement("div", {className: "company-name col"}, React.createElement("a", {href: '#' + this.props.company.p}, this.props.company.n))
-                )
+            React.createElement("li", {className: "company-list-item row"}, 
+            	React.createElement("div", {className: "company-item-img col"}, 
+            		React.createElement(CompanyThumbnail, {src: this.props.company.i, maxSize: maxThumbSize})
+            	), 
+            	React.createElement("div", {className: "company-name col"}, React.createElement("a", {href: '#' + this.props.company.p}, this.props.company.n))
+            )
         );
     }
 });
@@ -81,13 +81,13 @@ function pager(page) {
 		return;
 
 	var pageLinks = [];
-	if (page.currentPage > 1) {
+	if(page.currentPage > 1) {
 		pageLinks.push(React.createElement("a", {className: "page-link col", onClick: page.handleClick(page.currentPage - 1)}, "‹"))
 	}
 
 	var startPage = page.currentPage - (page.currentPage > 1 ? 6 : 7);
 	var endPage = page.currentPage + 6;
-	if (startPage <= 0) {
+	if(startPage <= 0) {
 	    endPage -= (startPage - 1);
 	    startPage = 1;
 	}
@@ -110,10 +110,12 @@ function pager(page) {
 	return React.createElement("div", {className: "pager row"}, pageLinks)
 }
 
-var CompanyList = React.createClass({displayName: "CompanyList",
+var SearchResultList = React.createClass({displayName: "SearchResultList",
 	getInitialState: function() {
 		return {
-			currentPage: 1
+			companies: [],
+			currentPage: 1,
+			status: 'noquery'
 		}
 	},
 
@@ -122,11 +124,37 @@ var CompanyList = React.createClass({displayName: "CompanyList",
 			pageSize: 10
 		}
 	},
+
+	loadCompaniesFromServer: function(q) {
+		this.setState({status: 'loading'});
+		var queryUrl =  this.props.url + q;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({companies: data, currentPage: 1, status: 'loaded'});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });		
+	},
+
+	componentWillMount: function() {
+		if(this.props.query.length >= 3) {
+			this.loadCompaniesFromServer(this.props.query);
+		}
+	},
 	
 	componentWillReceiveProps: function(nextProps) {
-    	this.setState({
-      		currentPage: 1
-    	})
+		if(this.props.query !== nextProps.query) {
+			if(nextProps.query.length < 3) {
+				this.setState({companies:[], status: 'noquery'});
+			}
+			else {
+				this.loadCompaniesFromServer(nextProps.query);	
+			}
+		}
   	},
 
 	getPage: function() {
@@ -135,7 +163,7 @@ var CompanyList = React.createClass({displayName: "CompanyList",
 
 	    return {
 	      	currentPage: this.state.currentPage, 
-	      	companies: this.props.companies.slice(start, end), 
+	      	companies: this.state.companies.slice(start, end), 
 	      	numPages: this.getNumPages(), 
 	      	handleClick: function(pageNum) {
 	        	return function() { 
@@ -146,8 +174,8 @@ var CompanyList = React.createClass({displayName: "CompanyList",
 	},
 
 	getNumPages: function() {
-	    var numPages = Math.floor(this.props.companies.length / this.props.pageSize);
-	    if (this.props.companies.length % this.props.pageSize > 0) {
+	    var numPages = Math.floor(this.state.companies.length / this.props.pageSize);
+	    if (this.state.companies.length % this.props.pageSize > 0) {
 	      	numPages++
 	    }
 	    return numPages;
@@ -162,9 +190,27 @@ var CompanyList = React.createClass({displayName: "CompanyList",
         var rows = page.companies.map(function(company) {
         	return React.createElement(CompanyRow, {company: company})
         });
+
+        var resultStatus;
+        switch(this.state.status){
+        	case 'noquery':
+        		resultStatus = 'Type a query (atleast 3 characters)';
+        		break;
+        	case 'loading':
+        		resultStatus = 'Searching...';
+        		break;
+        	case 'loaded':
+        		if(this.state.companies.length > 0) {
+        			resultStatus = numberWithCommas(this.state.companies.length) + ' results';
+        		}
+        		else {
+        			resultStatus = 'Your query "' + this.props.query + '" returned no results'
+        		}
+        }
+
         return (
         	React.createElement("div", null, 
-        		React.createElement("div", {className: "result-status"}, this.props.companies.length > 0 ? numberWithCommas(this.props.companies.length) + ' results' : this.props.query === '' ? 'Type a query' : 'Your query \'' + this.props.query + '\' returned no results'), 
+        		React.createElement("div", {className: "result-status"}, resultStatus), 
 	        	React.createElement("ul", {className: "company-list"}, 
 	        		rows
 	        	), 
@@ -184,6 +230,12 @@ var SearchBar = React.createClass({displayName: "SearchBar",
     	this.handleKeyDown = _.debounce(this.handleKeyDown, 300);
     },
 
+    componentWillReceiveProps: function(nextprops) {
+    	if(nextprops.query !== '' && nextprops.query !== this.props.query) {
+    		React.findDOMNode(this.refs.search).value = nextprops.query;
+    	}
+    },
+
     render: function() {
         return (
             React.createElement("input", {type: "text", placeholder: "Search by company name...", className: "sb", onKeyDown: this.handleKeyDown, ref: "search"})
@@ -191,62 +243,100 @@ var SearchBar = React.createClass({displayName: "SearchBar",
     }
 });
 
+var CompanyProfile = React.createClass({displayName: "CompanyProfile",
+	render: function(){
+		return (
+				React.createElement("div", null, 'Profile for ' + this.props.permalink + ' will be displayed here')
+		);
+	}
+});
 
-var FilterableCompanyList = React.createClass({displayName: "FilterableCompanyList",
-	getInitialState: function() {
+var TrendView = React.createClass({displayName: "TrendView",
+	render: function(){
+		return (
+				React.createElement("div", null, 'Trends will be displayed here.')
+		);
+	}
+});
+
+var AppPages = {
+	HOME: 'home',
+	SEARCH: 'search',
+	PROFILE: 'profile'
+};
+
+var App = React.createClass({displayName: "App",
+	getInitialState: function(){
 		return {
-			companies: [],
-			query: ''
-		}
-	},
-
-	loadCompaniesFromServer: function(q) {
-		var queryUrl =  this.props.url + q;
-	    $.ajax({
-	      	url: queryUrl,
-	      	dataType: 'json',
-	      	success: function(data) {
-	        	this.setState({companies: data, query: q});
-	      	}.bind(this),
-	      	error: function(xhr, status, err) {
-	        	console.error(queryUrl, status, err.toString());
-	      	}.bind(this)
-	    });		
+			currPage: AppPages.HOME,
+			query: '',
+			permalink:''
+		};
 	},
 
 	handleOnQuery: function(q) {
 		if(q.length < 3) {
-			this.setState({companies: [], query: ''});
+			this.setState({currPage: AppPages.HOME, query: ''})
 		}
-		else {
-			this.loadCompaniesFromServer(q);
+		else{
+			this.router.setRoute('/search/' + q);
 		}
 	},
 
-    render: function() {
-        return (
+	componentDidMount: function () {
+		var setState = this.setState.bind(this);
+		var self = this;
+		this.router = Router({
+			'/': function(){
+				setState({currPage: AppPages.HOME})
+			},
+			'/search/:query': function(query) {
+				setState({currPage: AppPages.SEARCH, query: query});
+			},
+			'/:permalink': function(permalink) {
+				setState({currPage: AppPages.PROFILE, permalink: permalink});
+			}
+		});
+		this.router.init();
+	},
+
+	render: function() {
+		var content;
+		console.log('rendering', this.state.currPage);
+		if(this.state.currPage == AppPages.HOME) {
+			content =
+	            React.createElement(TrendView, null);
+		}
+		else if(this.state.currPage == AppPages.SEARCH) {
+			content =
+	            React.createElement(SearchResultList, {url: "/companies?q=", query: this.state.query});
+		}
+		else if(this.state.currPage == AppPages.PROFILE) {
+	        content =
+	        	React.createElement(CompanyProfile, {permalink: this.state.permalink});
+		}
+
+		return (
         	React.createElement("div", null, 
 	            React.createElement("div", {className: "header row"}, 
 	            	React.createElement("div", {className: "wrapper"}, 
-		            	React.createElement("h1", {className: "logo col"}, "Investup"), 
+		            	React.createElement("a", {href: "/"}, React.createElement("h1", {className: "logo col"}, "Investup")), 
 		                React.createElement(SearchBar, {
 		                	className: "col", 
+		                	query: this.state.query, 
+		                	permalink: this.state.permalink, 
 		                	onQuery: this.handleOnQuery}
 		                )
 		            )
 	            ), 
-	           	React.createElement("div", {className: "wrapper"}, 
-		            React.createElement("div", {className: "list-wrapper"}, 
-			            React.createElement(CompanyList, {
-			            	companies: this.state.companies, 
-			            	query: this.state.query}
-			            )
-			        )
-			    )
+	            React.createElement("div", {className: "wrapper"}, 
+	            	React.createElement("div", {className: "content-wrapper"}, 
+	            		content
+	            	)
+	            )
 	        )
-            
-        );
-    }
+		);
+	}	
 });
 
-React.render(React.createElement(FilterableCompanyList, {url: "/companies?q="}), document.body);
+React.render(React.createElement(App, null), document.body);
