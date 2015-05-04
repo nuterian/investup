@@ -283,6 +283,42 @@ ul.company-list {
     cursor:default;
 }
 
+.profile-img {
+    width: 155px;
+}
+
+.profile-content {
+    width: 700px;
+}
+
+.profile-summary{
+    width: 100%;
+    border: 1px solid #eee;
+    border-radius: 2px;
+}
+
+.profile-summary .col {
+    width: 33%;
+    height: 100px;
+    text-align:center;
+    padding: 20px 0;
+    border-right: 1px solid #eee;
+    font-size: 26px;
+    box-sizing: border-box;
+}
+
+.summary-label {
+    font-size: 14px;
+    text-transform: uppercase;
+    font-weight: 300;
+    color: #aaa;
+    margin-bottom: 10px;
+}
+
+.profile-summary .col:last-child {
+    border: none;
+}
+
 
 .row:before,
 .row:after {

@@ -231,7 +231,7 @@ var SearchBar = React.createClass({displayName: "SearchBar",
     },
 
     componentWillReceiveProps: function(nextprops) {
-    	if(nextprops.query !== '' && nextprops.query !== this.props.query) {
+    	if(	nextprops.query !== this.props.query) {
     		React.findDOMNode(this.refs.search).value = nextprops.query;
     	}
     },
@@ -244,9 +244,72 @@ var SearchBar = React.createClass({displayName: "SearchBar",
 });
 
 var CompanyProfile = React.createClass({displayName: "CompanyProfile",
+	getInitialState: function(){
+		return {
+			profile: {},
+			status: "loading"			
+		}
+	},
+
+	getDefaultProps: function() {
+		return {
+			url: "/profile?p="
+		}
+	},
+
+	loadCompaniesFromServer: function(p) {
+		console.log('loading');
+		this.setState({status: "loading"});
+
+		var queryUrl =  this.props.url + p;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({profile: data, status: "loaded"});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });		
+	},
+
+	componentWillMount: function() {
+		this.loadCompaniesFromServer(this.props.permalink);
+	},
+
+	componentWillReceiveProps: function(nextprops) {
+		if(this.props.permalink !== nextprops.permalink) {
+			this.loadProfileFromServer(permalink);
+		}
+	},
+
 	render: function(){
+
 		return (
-				React.createElement("div", null, 'Profile for ' + this.props.permalink + ' will be displayed here')
+			React.createElement("div", {className: "profile"}, 
+				React.createElement("div", {className: "row"}, 
+						React.createElement("div", {className: "col profile-img"}, 
+							React.createElement(CompanyThumbnail, {src: "", maxSize: 100})
+						), 
+						React.createElement("div", {className: "col profile-content"}, 
+							React.createElement("h2", {className: "profile-title"}, this.state.profile.name), 
+							React.createElement("div", {className: "profile-summary row"}, 
+								React.createElement("div", {className: "col"}, 
+									React.createElement("div", {className: "summary-label"}, 'Success chance')
+								), 
+								React.createElement("div", {className: "col"}, 
+									React.createElement("div", {className: "summary-label"}, 'Total funding'), 
+									React.createElement("div", null, '$' + numeral(this.state.profile.total_funding).format('0.00a'))
+								), 
+								React.createElement("div", {className: "col"}, 
+									React.createElement("div", {className: "summary-label"}, 'Employees'), 
+									React.createElement("div", null, this.state.profile.num_employees)
+								)
+							)
+						)
+				)
+			)
 		);
 	}
 });
@@ -275,11 +338,11 @@ var App = React.createClass({displayName: "App",
 	},
 
 	handleOnQuery: function(q) {
-		if(q.length < 3) {
-			this.setState({currPage: AppPages.HOME, query: ''})
-		}
-		else{
+		if(q.length >= 3) {
 			this.router.setRoute('/search/' + q);
+		}
+		else if(this.state.currPage !== AppPages.PROFILE){
+			this.router.setRoute('/');
 		}
 	},
 
@@ -294,7 +357,7 @@ var App = React.createClass({displayName: "App",
 				setState({currPage: AppPages.SEARCH, query: query});
 			},
 			'/:permalink': function(permalink) {
-				setState({currPage: AppPages.PROFILE, permalink: permalink});
+				setState({currPage: AppPages.PROFILE, permalink: permalink, query: ''});
 			}
 		});
 		this.router.init();

@@ -1,6 +1,7 @@
-var express = require('express');
-var app = express();
-var fs = require('fs');
+var express     = require('express');
+var app         = express();
+var fs          = require('fs');
+var utils       = require('./modules/utils');
 
 app.use(express.static('public'));
 app.set('views', './views');
@@ -9,42 +10,6 @@ app.set('view engine', 'jade');
 app.get('/', function (req, res) {
     res.render('index');
 });
-
-function score(a, keys) {
-    var score = 0;
-
-    a = a.toLowerCase();
-    a = a.replace(/\W+/g, ' '); //Convert all non-word characters to spaces.
-    _a = a.split(' ');
-
-    keys.forEach(function(k, i) {
-        _a.forEach(function(b, j){
-            if( b == k ) {
-                score += 10;
-                if(i == j) {
-                    score += 3;
-                }
-                else {
-                    score -= 1;
-                }
-            }
-            else if(b.indexOf(k) > -1) {
-                score += 3;
-                if(i == j) {
-                    score += 2;
-                }
-            }
-            else {
-                score -= 1;//Math.abs(b.length - k.length);
-            }
-        });
-    });
-
-    var diff = Math.abs(_a.length - keys.length);
-    score -= diff;
-
-    return score;
-}
 
 app.get('/companies', function(req, res) {
     var q = req.query.q;
@@ -74,8 +39,8 @@ app.get('/companies', function(req, res) {
     }
 
     r.sort(function(a,b) {
-        var sa = score(a.n, _keys);
-        var sb = score(b.n, _keys);
+        var sa = utils.getKeywordMatchScore(a.n, _keys);
+        var sb = utils.getKeywordMatchScore(b.n, _keys);
 
         if(sa > sb) {
             return -1;
@@ -89,7 +54,29 @@ app.get('/companies', function(req, res) {
     res.send(r);
 });
 
-console.log('Loading companies...');
+app.get('/profile', function(req, res) {
+    var permalink = req.query.p;
+    var retries = 4;
+    (function getData() {
+        utils.getOrganizationData(permalink, function(data, resCode) {
+            if(resCode !== 200 && --retries >= 0) {
+                return getData();
+            }
+
+            try{
+                var dataObject = JSON.parse(data);
+                res.send(utils.getOrganizationProfileFromData(dataObject));   
+            }
+            catch(e) {
+                res.send({});
+                console.log('Error getting data (' + resCode + ')', data.split('\n').slice(0,3), e.stack);
+            }
+            
+        });
+    })();
+});
+
+console.log('Loading data...');
 var server, companies;
 fs.readFile('data/companies.json', function(err, data) {
     if(err) throw err;

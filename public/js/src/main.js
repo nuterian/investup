@@ -231,7 +231,7 @@ var SearchBar = React.createClass({
     },
 
     componentWillReceiveProps: function(nextprops) {
-    	if(nextprops.query !== '' && nextprops.query !== this.props.query) {
+    	if(	nextprops.query !== this.props.query) {
     		React.findDOMNode(this.refs.search).value = nextprops.query;
     	}
     },
@@ -244,9 +244,72 @@ var SearchBar = React.createClass({
 });
 
 var CompanyProfile = React.createClass({
+	getInitialState: function(){
+		return {
+			profile: {},
+			status: "loading"			
+		}
+	},
+
+	getDefaultProps: function() {
+		return {
+			url: "/profile?p="
+		}
+	},
+
+	loadCompaniesFromServer: function(p) {
+		console.log('loading');
+		this.setState({status: "loading"});
+
+		var queryUrl =  this.props.url + p;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({profile: data, status: "loaded"});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });		
+	},
+
+	componentWillMount: function() {
+		this.loadCompaniesFromServer(this.props.permalink);
+	},
+
+	componentWillReceiveProps: function(nextprops) {
+		if(this.props.permalink !== nextprops.permalink) {
+			this.loadProfileFromServer(permalink);
+		}
+	},
+
 	render: function(){
+
 		return (
-				<div>{'Profile for ' + this.props.permalink + ' will be displayed here'}</div>
+			<div className="profile">
+				<div className="row">
+						<div className="col profile-img">
+							<CompanyThumbnail src="" maxSize={100} />
+						</div>
+						<div className="col profile-content">
+							<h2 className="profile-title">{this.state.profile.name}</h2>
+							<div className="profile-summary row">
+								<div className="col">
+									<div className="summary-label">{'Success chance'}</div>
+								</div>
+								<div className="col">
+									<div className="summary-label">{'Total funding'}</div>
+									<div>{'$' + numeral(this.state.profile.total_funding).format('0.00a')}</div>
+								</div>
+								<div className="col">
+									<div className="summary-label">{'Employees'}</div>
+									<div>{this.state.profile.num_employees}</div>
+								</div>
+							</div>
+						</div>
+				</div>
+			</div>
 		);
 	}
 });
@@ -275,11 +338,11 @@ var App = React.createClass({
 	},
 
 	handleOnQuery: function(q) {
-		if(q.length < 3) {
-			this.setState({currPage: AppPages.HOME, query: ''})
-		}
-		else{
+		if(q.length >= 3) {
 			this.router.setRoute('/search/' + q);
+		}
+		else if(this.state.currPage !== AppPages.PROFILE){
+			this.router.setRoute('/');
 		}
 	},
 
@@ -294,7 +357,7 @@ var App = React.createClass({
 				setState({currPage: AppPages.SEARCH, query: query});
 			},
 			'/:permalink': function(permalink) {
-				setState({currPage: AppPages.PROFILE, permalink: permalink});
+				setState({currPage: AppPages.PROFILE, permalink: permalink, query: ''});
 			}
 		});
 		this.router.init();
