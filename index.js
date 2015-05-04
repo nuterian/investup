@@ -57,27 +57,48 @@ app.get('/companies', function(req, res) {
 app.get('/profile', function(req, res) {
     var permalink = req.query.p;
     var retries = 4;
-    (function getData() {
-        utils.getOrganizationData(permalink, function(data, resCode) {
-            if(resCode !== 200 && --retries >= 0) {
-                return getData();
-            }
+    var profileData;
 
-            try{
-                var dataObject = JSON.parse(data);
-                res.send(utils.getOrganizationProfileFromData(dataObject));   
+    var profileFilePath = './comps/' + permalink + '.json';
+    try {
+        //Check if local copy of profile exists.
+        var profileStats = fs.lstatSync(profileFilePath);
+        profileData = fs.readFile(profileFilePath, 'utf8', function(err, data) {
+            if(err) {
+                return res.send({});
             }
-            catch(e) {
-                res.send({});
-                console.log('Error getting data (' + resCode + ')', data.split('\n').slice(0,3), e.stack);
-            }
-            
+            res.send(data);
         });
-    })();
+    }
+    catch (e) {
+        // If local copy of profile doesn't exist, get data using API.
+        (function getData() {
+            utils.getOrganizationData(permalink, function(data, resCode) {
+                if(resCode !== 200 && --retries >= 0) {
+                    return getData();
+                }
+
+                try{
+                    var dataObject = JSON.parse(data);
+                    profileData = utils.getOrganizationProfileFromData(dataObject);
+                    fs.writeFile(profileFilePath, JSON.stringify(profileData), function(err) {});
+                    res.send(profileData);   
+                }
+                catch(e) {
+                    res.send({});
+                    console.log('Error getting data (' + resCode + ')', data.split('\n').slice(0,3), e.stack);
+                }
+                
+            });
+        })();        
+    }
 });
 
 console.log('Loading data...');
 var server, companies;
+if(!fs.existsSync('./comps')) {
+    fs.mkdirSync('./comps');
+}
 fs.readFile('data/companies.json', function(err, data) {
     if(err) throw err;
     companies = JSON.parse(data);
