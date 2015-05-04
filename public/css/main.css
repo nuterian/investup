@@ -2,6 +2,15 @@ body {
     font-family: 'Roboto', Arial, 'Helvetica Neue', Helvetica, sans-serif;
 }
 
+a, a:link, a:visited {
+    color: #3850D9;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
 .wrapper {
     width: 1000px;
     margin: 0 auto;
@@ -147,6 +156,9 @@ fieldset[disabled] .btn-default.active {
 }
 
 .content-wrapper{
+}
+
+.list-wrapper{
     padding-left: 145px;
 }
 
@@ -234,6 +246,52 @@ ul.company-list {
 }
 
 
+.spinner-bounce {
+  margin: 0 auto 0;
+  width: 70px;
+  text-align: center;
+}
+
+.spinner-bounce > div {
+  width: 18px;
+  height: 18px;
+  background-color: #666;
+
+  border-radius: 100%;
+  display: inline-block;
+  -webkit-animation: bouncedelay 1.4s infinite ease-in-out;
+  animation: bouncedelay 1.4s infinite ease-in-out;
+  /* Prevent first frame from flickering when animation starts */
+  -webkit-animation-fill-mode: both;
+  animation-fill-mode: both;
+}
+
+.spinner-bounce .bounce1 {
+  -webkit-animation-delay: -0.32s;
+  animation-delay: -0.32s;
+}
+
+.spinner-bounce .bounce2 {
+  -webkit-animation-delay: -0.16s;
+  animation-delay: -0.16s;
+}
+
+@-webkit-keyframes bouncedelay {
+  0%, 80%, 100% { -webkit-transform: scale(0.0) }
+  40% { -webkit-transform: scale(1.0) }
+}
+
+@keyframes bouncedelay {
+  0%, 80%, 100% { 
+    transform: scale(0.0);
+    -webkit-transform: scale(0.0);
+  } 40% { 
+    transform: scale(1.0);
+    -webkit-transform: scale(1.0);
+  }
+}
+
+
 .thumb-loaded .spinner, .thumb-failed .spinner, .thumb-loading img {
     display: none;
 }
@@ -284,20 +342,45 @@ ul.company-list {
 }
 
 .profile-img {
-    width: 155px;
+    width: 140px;
 }
 
 .profile-content {
-    width: 700px;
+    width: 860px;
+}
+
+.profile-content h2{
+    font-weight: 500;
+    margin: 30px 0 10px;
+    font-size: 32px;
+}
+
+.profile-desc {
+    padding: 0 0 20px;
+    color: #888;
 }
 
 .profile-summary{
     width: 100%;
     border: 1px solid #eee;
     border-radius: 2px;
+    font-size: 13px;
 }
 
-.profile-summary .col {
+.profile-summary.loaded .spinner-bounce{
+    display:none;
+}
+
+.profile-summary.loading {
+    text-align:center;
+    padding: 30px;
+}
+
+.profile-panel{
+    border-bottom: 1px solid #eee;
+}
+
+.profile-panel .col {
     width: 33%;
     height: 100px;
     text-align:center;
@@ -307,7 +390,12 @@ ul.company-list {
     box-sizing: border-box;
 }
 
-.summary-label {
+.profile-props .col {
+    padding: 20px 0 20px 15px;
+    box-sizing: border-box;
+}
+
+.profile-label {
     font-size: 14px;
     text-transform: uppercase;
     font-weight: 300;
@@ -315,8 +403,18 @@ ul.company-list {
     margin-bottom: 10px;
 }
 
-.profile-summary .col:last-child {
+.profile-props .profile-label {
+    text-transform: capitalize;
+    font-size: 13px;
+}
+
+.profile-panel .col:last-child {
     border: none;
+}
+
+.light {
+    font-size: 0.85em;
+    color: #888;
 }
 
 

@@ -209,7 +209,7 @@ var SearchResultList = React.createClass({
         }
 
         return (
-        	<div>
+        	<div className="list-wrapper">
         		<div className="result-status">{resultStatus}</div>
 	        	<ul className="company-list">
 	        		{rows}
@@ -243,10 +243,131 @@ var SearchBar = React.createClass({
     }
 });
 
+var BounceSpinner = React.createClass({
+	render: function(){
+		return (
+			<div className="spinner-bounce">
+			  	<div className="bounce1"></div>
+			  	<div className="bounce2"></div>
+			  	<div className="bounce3"></div>
+			</div>
+		);
+	}
+});
+
+var CompanyProfileSummary = React.createClass({
+	statuses: {
+		LOADING: 'loading',
+		LOADED: 'loaded',
+		FAILED: 'failed'
+	},
+
+	getInitialState: function() {
+		return {
+			status: this.statuses.LOADING,
+		}
+	},
+
+	getDefaultProps: function() {
+		return {
+			profile: null
+		}
+	},
+
+	componentWillReceiveProps: function(nextProps) {
+		if(nextProps.profile !== null && this.props.profile !== nextProps.profile) {
+			this.setState({status: this.statuses.LOADED})
+		}
+	},
+
+	render: function() {
+		var numEmployees = null;
+		if(this.props.profile) {
+			var availableProps = [];
+			if(this.props.profile.homepage_url) {
+				availableProps.push({l: "Website", t: "a", a: {href: this.props.profile.homepage_url}, v: (new URL(this.props.profile.homepage_url).hostname) });
+			}
+
+			if(this.props.profile.founded_on) {
+				availableProps.push({l: "Founded", t: "div", v: this.props.profile.founded_on.split('-')[0] });
+			}
+
+			if(this.props.profile.age) {
+				availableProps.push({l: "Exit age (months)", t: "div", v: this.props.profile.age });
+			}
+
+			if(this.props.profile.location) {
+				availableProps.push({l: "Location", t: "div", v: this.props.profile.location.c + ', ' + this.props.profile.location.r });
+			}
+
+			var propWidth = 100/availableProps.length + '%';
+			var profileProps = [];
+			availableProps.forEach(function(p) {
+				profileProps.push(
+					React.createElement("div", {className: "col", style: {width: propWidth}}, 
+						React.createElement("div", {className: "profile-label"}, p.l), 
+						React.createElement(p.t, p.a || null, p.v)
+					)
+				);
+			});
+
+			if(this.props.profile.num_employees) {
+				var split = this.props.profile.num_employees.split('-');
+				if(split.length > 1) {
+					numEmployees = numberWithCommas(split[0]) + ' - ' + numberWithCommas(split[1]);
+				}
+				else {
+					numEmployees = numberWithCommas(split[0]);
+				}
+			}
+		}
+
+		return (
+			<div className={"profile-summary " + this.state.status}>
+				{ this.props.profile ?
+					<div className="profile-summary-content">
+						<div className="profile-panel row">
+							<div className="col">
+								<div className="profile-label">{"Success chance"}</div>
+								<div>{this.props.profile.success || <span className="light">{"n/a"}</span>}</div>
+							</div>
+							
+							{ !this.props.profile.total_funding || this.props.profile.total_funding == 0 ?
+								this.props.profile.total_funding_investments == 0 ?
+									<div className="col">
+										<div className="profile-label">{"Total funding"}</div>
+										<div className="light">{"n/a"}</div>
+									</div>
+									:
+									<div className="col">
+										<div className="profile-label">{"Total investments"}</div>
+										<div>{numeral(this.props.profile.total_funding_investments).format('($ 0.00a)')}</div>
+									</div>
+								:
+								<div className="col">
+									<div className="profile-label">{"Total funding"}</div>
+									<div>{numeral(this.props.profile.total_funding).format('($ 0.00a)')}</div>
+								</div>
+							}
+							<div className="col">
+								<div className="profile-label">{"Employees"}</div>
+								<div>{numEmployees || <span className="light">{"unknown"}</span>}</div>
+							</div>
+						</div>
+						<div className="profile-props row">{profileProps}</div>
+					</div> 
+					: null
+				}
+				<BounceSpinner />
+			</div>
+		);
+	}
+});
+
 var CompanyProfile = React.createClass({
 	getInitialState: function(){
 		return {
-			profile: {},
+			profile: null,
 			status: "loading"			
 		}
 	},
@@ -289,25 +410,14 @@ var CompanyProfile = React.createClass({
 		return (
 			<div className="profile">
 				<div className="row">
-						<div className="col profile-img">
-							<CompanyThumbnail src="" maxSize={100} />
-						</div>
-						<div className="col profile-content">
-							<h2 className="profile-title">{this.state.profile.name}</h2>
-							<div className="profile-summary row">
-								<div className="col">
-									<div className="summary-label">{'Success chance'}</div>
-								</div>
-								<div className="col">
-									<div className="summary-label">{'Total funding'}</div>
-									<div>{'$' + numeral(this.state.profile.total_funding).format('0.00a')}</div>
-								</div>
-								<div className="col">
-									<div className="summary-label">{'Employees'}</div>
-									<div>{this.state.profile.num_employees}</div>
-								</div>
-							</div>
-						</div>
+					<div className="col profile-img">
+						<CompanyThumbnail src="" maxSize={100} />
+					</div>
+					<div className="col profile-content">
+						<h2>{this.state.profile ? this.state.profile.name : ''}</h2>
+						<div className="profile-desc">{this.state.profile ? this.state.profile.description : ''}</div>
+						<CompanyProfileSummary profile={this.state.profile} />
+					</div>
 				</div>
 			</div>
 		);

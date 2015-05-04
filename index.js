@@ -59,7 +59,7 @@ app.get('/profile', function(req, res) {
     var retries = 4;
     var profileData;
 
-    var profileFilePath = './comps/' + permalink + '.json';
+    var profileFilePath = './data/comps/' + permalink + '.json';
     try {
         //Check if local copy of profile exists.
         var profileStats = fs.lstatSync(profileFilePath);
@@ -96,8 +96,8 @@ app.get('/profile', function(req, res) {
 
 console.log('Loading data...');
 var server, companies;
-if(!fs.existsSync('./comps')) {
-    fs.mkdirSync('./comps');
+if(!fs.existsSync('./data/comps')) {
+    fs.mkdirSync('./data/comps');
 }
 fs.readFile('data/companies.json', function(err, data) {
     if(err) throw err;

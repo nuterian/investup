@@ -32,7 +32,7 @@ var profileFeatures = {
 				c: address.city,
 				r: address.region,
 				y: address.country
-			}				
+			};
 		}
 		return null;
 	},
@@ -41,7 +41,7 @@ var profileFeatures = {
 		var min = d.properties.num_employees_min || 0;
 		var max = d.properties.num_employees_max || 0;
 		if(min === max) {
-			if(min == 0) return null;
+			if(min === 0) return null;
 			return min;
 		}
 		return min + '-' + max;
@@ -106,6 +106,20 @@ var profileFeatures = {
 			return d.relationships.products.items.length;
 		}
 		return 0;
+	},
+
+	total_funding_investments: function(d) {
+		if(d.relationships.investments) {
+			var items = d.relationships.investments.items;
+			var total = 0;
+			items.forEach(function(i){
+				if(i.relationships && i.relationships.funding_round) {
+					total += i.relationships.funding_round.properties.money_raised_usd || 0;
+				}
+			});
+			return total;
+		}
+		return 0;		
 	},
 
 	num_investments: function(d){

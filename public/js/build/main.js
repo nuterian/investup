@@ -209,7 +209,7 @@ var SearchResultList = React.createClass({displayName: "SearchResultList",
         }
 
         return (
-        	React.createElement("div", null, 
+        	React.createElement("div", {className: "list-wrapper"}, 
         		React.createElement("div", {className: "result-status"}, resultStatus), 
 	        	React.createElement("ul", {className: "company-list"}, 
 	        		rows
@@ -243,10 +243,131 @@ var SearchBar = React.createClass({displayName: "SearchBar",
     }
 });
 
+var BounceSpinner = React.createClass({displayName: "BounceSpinner",
+	render: function(){
+		return (
+			React.createElement("div", {className: "spinner-bounce"}, 
+			  	React.createElement("div", {className: "bounce1"}), 
+			  	React.createElement("div", {className: "bounce2"}), 
+			  	React.createElement("div", {className: "bounce3"})
+			)
+		);
+	}
+});
+
+var CompanyProfileSummary = React.createClass({displayName: "CompanyProfileSummary",
+	statuses: {
+		LOADING: 'loading',
+		LOADED: 'loaded',
+		FAILED: 'failed'
+	},
+
+	getInitialState: function() {
+		return {
+			status: this.statuses.LOADING,
+		}
+	},
+
+	getDefaultProps: function() {
+		return {
+			profile: null
+		}
+	},
+
+	componentWillReceiveProps: function(nextProps) {
+		if(nextProps.profile !== null && this.props.profile !== nextProps.profile) {
+			this.setState({status: this.statuses.LOADED})
+		}
+	},
+
+	render: function() {
+		var numEmployees = null;
+		if(this.props.profile) {
+			var availableProps = [];
+			if(this.props.profile.homepage_url) {
+				availableProps.push({l: "Website", t: "a", a: {href: this.props.profile.homepage_url}, v: (new URL(this.props.profile.homepage_url).hostname) });
+			}
+
+			if(this.props.profile.founded_on) {
+				availableProps.push({l: "Founded", t: "div", v: this.props.profile.founded_on.split('-')[0] });
+			}
+
+			if(this.props.profile.age) {
+				availableProps.push({l: "Exit age (months)", t: "div", v: this.props.profile.age });
+			}
+
+			if(this.props.profile.location) {
+				availableProps.push({l: "Location", t: "div", v: this.props.profile.location.c + ', ' + this.props.profile.location.r });
+			}
+
+			var propWidth = 100/availableProps.length + '%';
+			var profileProps = [];
+			availableProps.forEach(function(p) {
+				profileProps.push(
+					React.createElement("div", {className: "col", style: {width: propWidth}}, 
+						React.createElement("div", {className: "profile-label"}, p.l), 
+						React.createElement(p.t, p.a || null, p.v)
+					)
+				);
+			});
+
+			if(this.props.profile.num_employees) {
+				var split = this.props.profile.num_employees.split('-');
+				if(split.length > 1) {
+					numEmployees = numberWithCommas(split[0]) + ' - ' + numberWithCommas(split[1]);
+				}
+				else {
+					numEmployees = numberWithCommas(split[0]);
+				}
+			}
+		}
+
+		return (
+			React.createElement("div", {className: "profile-summary " + this.state.status}, 
+				 this.props.profile ?
+					React.createElement("div", {className: "profile-summary-content"}, 
+						React.createElement("div", {className: "profile-panel row"}, 
+							React.createElement("div", {className: "col"}, 
+								React.createElement("div", {className: "profile-label"}, "Success chance"), 
+								React.createElement("div", null, this.props.profile.success || React.createElement("span", {className: "light"}, "n/a"))
+							), 
+							
+							 !this.props.profile.total_funding || this.props.profile.total_funding == 0 ?
+								this.props.profile.total_funding_investments == 0 ?
+									React.createElement("div", {className: "col"}, 
+										React.createElement("div", {className: "profile-label"}, "Total funding"), 
+										React.createElement("div", {className: "light"}, "n/a")
+									)
+									:
+									React.createElement("div", {className: "col"}, 
+										React.createElement("div", {className: "profile-label"}, "Total investments"), 
+										React.createElement("div", null, numeral(this.props.profile.total_funding_investments).format('($ 0.00a)'))
+									)
+								:
+								React.createElement("div", {className: "col"}, 
+									React.createElement("div", {className: "profile-label"}, "Total funding"), 
+									React.createElement("div", null, numeral(this.props.profile.total_funding).format('($ 0.00a)'))
+								), 
+							
+							React.createElement("div", {className: "col"}, 
+								React.createElement("div", {className: "profile-label"}, "Employees"), 
+								React.createElement("div", null, numEmployees || React.createElement("span", {className: "light"}, "unknown"))
+							)
+						), 
+						React.createElement("div", {className: "profile-props row"}, profileProps)
+					) 
+					: null, 
+				
+				React.createElement(BounceSpinner, null)
+			)
+		);
+	}
+});
+
 var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 	getInitialState: function(){
 		return {
-			profile: {},
+			profile: null,
 			status: "loading"			
 		}
 	},
@@ -289,25 +410,14 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 		return (
 			React.createElement("div", {className: "profile"}, 
 				React.createElement("div", {className: "row"}, 
-						React.createElement("div", {className: "col profile-img"}, 
-							React.createElement(CompanyThumbnail, {src: "", maxSize: 100})
-						), 
-						React.createElement("div", {className: "col profile-content"}, 
-							React.createElement("h2", {className: "profile-title"}, this.state.profile.name), 
-							React.createElement("div", {className: "profile-summary row"}, 
-								React.createElement("div", {className: "col"}, 
-									React.createElement("div", {className: "summary-label"}, 'Success chance')
-								), 
-								React.createElement("div", {className: "col"}, 
-									React.createElement("div", {className: "summary-label"}, 'Total funding'), 
-									React.createElement("div", null, '$' + numeral(this.state.profile.total_funding).format('0.00a'))
-								), 
-								React.createElement("div", {className: "col"}, 
-									React.createElement("div", {className: "summary-label"}, 'Employees'), 
-									React.createElement("div", null, this.state.profile.num_employees)
-								)
-							)
-						)
+					React.createElement("div", {className: "col profile-img"}, 
+						React.createElement(CompanyThumbnail, {src: "", maxSize: 100})
+					), 
+					React.createElement("div", {className: "col profile-content"}, 
+						React.createElement("h2", null, this.state.profile ? this.state.profile.name : ''), 
+						React.createElement("div", {className: "profile-desc"}, this.state.profile ? this.state.profile.description : ''), 
+						React.createElement(CompanyProfileSummary, {profile: this.state.profile})
+					)
 				)
 			)
 		);
