@@ -1,7 +1,10 @@
-# web-search-project
+# Investup
+Simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities.
 
-1. Clone to a folder on your system.
-2. Install dependencies: `npm install`
-3. Run using the following command: `node index.js`
-4. Point your browser to the following URL: `http://127.0.0.1:3000/`
+**To Run:**
+
+1. Clone repo to a local dir.
+2. Open terminal and install dependencies: `npm install`
+3. Run server: `node index.js`
+4. Point your browser to the URL: `http://127.0.0.1:3000/`
   
