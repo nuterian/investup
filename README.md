@@ -1,7 +1,7 @@
 # Investup
 Simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities.
 
-Prerequisites: You should have `node` instailled on your machine. To install download from: `https://nodejs.org/`
+Prerequisites: You should have `node` instailled on your machine. To install download from: [node js](https://nodejs.org/)
 
 **To Run:**
 
