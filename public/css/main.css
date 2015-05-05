@@ -403,6 +403,7 @@ ul.company-list {
 .profile-summary.loading {
     text-align:center;
     padding: 30px;
+    border: none;
 }
 
 .profile-panel{
