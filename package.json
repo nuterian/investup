@@ -19,7 +19,7 @@
   "dependencies": {
     "express": "^4.12.3",
     "jade": "^1.9.2",
-    "machine-learning": "0.0.1",
+    "machine_learning": "0.0.8",
     "moment": "^2.10.2"
   }
 }
