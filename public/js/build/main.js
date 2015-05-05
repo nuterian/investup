@@ -9,6 +9,12 @@ var CompanyThumbnail = React.createClass({displayName: "CompanyThumbnail",
 		};
 	},
 
+	getDefaultProps: function(){
+		return {
+			alignTop: false
+		}
+	},
+
 	componentWillMount: function(){
 		if(!this.props.src) {
 			this.handleError();
@@ -30,15 +36,17 @@ var CompanyThumbnail = React.createClass({displayName: "CompanyThumbnail",
 
 	handleLoad: function(){
 		var imgNode = this.refs.img.getDOMNode();
+		var imgWidth = imgNode.width || this.props.maxSize;
+		var imgHeight = imgNode.height || this.props.maxSize;
 		if(imgNode.width > imgNode.height) {
 			imgNode.style.width = this.props.maxSize + 'px';
 			imgNode.style.height = 'auto';
-			imgNode.style.marginTop = (this.props.maxSize / 2 - (this.props.maxSize * imgNode.height / imgNode.width) / 2) + 'px';
+			imgNode.style.marginTop = ( this.props.maxSize / 2 - (this.props.maxSize * imgNode.height / imgNode.width ) / 2 ) + 'px';	
 		}
 		else {
 			imgNode.style.height = this.props.maxSize + 'px';
 			imgNode.style.width = 'auto';
-			imgNode.style.marginLeft = (this.props.maxSize / 2 - (this.props.maxSize * imgNode.width / imgNode.height) / 2) + 'px';
+			imgNode.style.marginLeft = ( this.props.maxSize / 2 - (this.props.maxSize * imgNode.width / imgNode.height ) / 2 ) + 'px';
 		}
 		this.setState({
 			status: 'loaded'
@@ -52,11 +60,12 @@ var CompanyThumbnail = React.createClass({displayName: "CompanyThumbnail",
 	},
 
 	render: function() {
-	    var className = 'thumb-' + this.state.status;
+	    var className = 'thumb thumb-' + this.state.status;
 	    return (
 	    	React.createElement("div", {className: className}, 
-		    	React.createElement("div", {className: "spinner"}), 
-		      	React.createElement("img", {src: this.props.src, alt: this.props.alt, onLoad: this.handleLoad, onError: this.handleError, ref: "img"})
+	    		React.createElement("div", {className: "thumb-placeholder", style: {fontSize: this.props.maxSize/2.1 + 'px', lineHeight: this.props.maxSize + 'px'}}, this.props.alt ? this.props.alt[0] : String.fromCharCode(65 + Math.random() * 25)), 
+		    	React.createElement("div", {className: "spinner", style: {width: this.props.maxSize + 'px', height: this.props.maxSize + 'px'}}), 
+		      	React.createElement("img", {src: this.props.src, onLoad: this.handleLoad, onError: this.handleError, ref: "img"})
 		     )
 	    );
 	}
@@ -68,7 +77,7 @@ var CompanyRow = React.createClass({displayName: "CompanyRow",
         return (
             React.createElement("li", {className: "company-list-item row"}, 
             	React.createElement("div", {className: "company-item-img col"}, 
-            		React.createElement(CompanyThumbnail, {src: this.props.company.i, maxSize: maxThumbSize})
+            		React.createElement(CompanyThumbnail, {src: this.props.company.i, maxSize: maxThumbSize, alt: this.props.company.n})
             	), 
             	React.createElement("div", {className: "company-name col"}, React.createElement("a", {href: '#' + this.props.company.p}, this.props.company.n))
             )
@@ -320,6 +329,7 @@ var CompanyProfileSummary = React.createClass({displayName: "CompanyProfileSumma
 					numEmployees = numberWithCommas(split[0]);
 				}
 			}
+
 		}
 
 		return (
@@ -328,8 +338,8 @@ var CompanyProfileSummary = React.createClass({displayName: "CompanyProfileSumma
 					React.createElement("div", {className: "profile-summary-content"}, 
 						React.createElement("div", {className: "profile-panel row"}, 
 							React.createElement("div", {className: "col"}, 
-								React.createElement("div", {className: "profile-label"}, "Success chance"), 
-								React.createElement("div", null, this.props.profile.success || React.createElement("span", {className: "light"}, "n/a"))
+								React.createElement("div", {className: "profile-label"}, "Success score"), 
+								React.createElement("div", null, Math.round(this.props.profile.success.all * 2250) || React.createElement("span", {className: "light"}, "n/a"))
 							), 
 							
 							 !this.props.profile.total_funding || this.props.profile.total_funding == 0 ?
@@ -368,21 +378,20 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 	getInitialState: function(){
 		return {
 			profile: null,
+			meta: null,
 			status: "loading"			
 		}
 	},
 
 	getDefaultProps: function() {
 		return {
-			url: "/profile?p="
+			profileUrl: "/profile?p=",
+			metaUrl: "/meta?p="
 		}
 	},
 
 	loadCompaniesFromServer: function(p) {
-		console.log('loading');
-		this.setState({status: "loading"});
-
-		var queryUrl =  this.props.url + p;
+		var queryUrl =  this.props.profileUrl + p;
 	    $.ajax({
 	      	url: queryUrl,
 	      	dataType: 'json',
@@ -395,13 +404,31 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 	    });		
 	},
 
+	loadMetaFromServer: function(p) {
+		var queryUrl =  this.props.metaUrl + p;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({meta: data, status: "loaded"});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });
+	},
+
 	componentWillMount: function() {
+		this.setState({status: "loading"});
+		this.loadMetaFromServer(this.props.permalink);
 		this.loadCompaniesFromServer(this.props.permalink);
 	},
 
 	componentWillReceiveProps: function(nextprops) {
 		if(this.props.permalink !== nextprops.permalink) {
-			this.loadProfileFromServer(permalink);
+			this.setState({status: "loading"});
+			this.loadMetaFromServer(nextprops.permalink);
+			this.loadProfileFromServer(nextprops.permalink);
 		}
 	},
 
@@ -411,10 +438,10 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 			React.createElement("div", {className: "profile"}, 
 				React.createElement("div", {className: "row"}, 
 					React.createElement("div", {className: "col profile-img"}, 
-						React.createElement(CompanyThumbnail, {src: "", maxSize: 100})
+						React.createElement(CompanyThumbnail, {src: this.state.meta ? this.state.meta.i : null, alt: this.state.meta ? this.state.meta.n : null, maxSize: 110, alignTop: true})
 					), 
 					React.createElement("div", {className: "col profile-content"}, 
-						React.createElement("h2", null, this.state.profile ? this.state.profile.name : ''), 
+						React.createElement("h2", null, this.state.meta ? this.state.meta.n : null), 
 						React.createElement("div", {className: "profile-desc"}, this.state.profile ? this.state.profile.description : ''), 
 						React.createElement(CompanyProfileSummary, {profile: this.state.profile})
 					)
@@ -425,9 +452,49 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 });
 
 var TrendView = React.createClass({displayName: "TrendView",
+	getInitialState: function() {
+		return {
+			stats: null
+		}
+	},
+
+	getDefaultProps: function(){
+		return {
+			statsUrl: '/stats' 
+		}
+	},
+
+	loadStatsFromServer: function(){
+		var queryUrl =  this.props.statsUrl;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({stats: data});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });
+	},
+
+	componentWillMount: function(){
+		this.loadStatsFromServer();
+	},
+
 	render: function(){
 		return (
-				React.createElement("div", null, 'Trends will be displayed here.')
+				React.createElement("div", {className: "trends"}, 
+					React.createElement("div", {className: "trends-banner"}, 
+						React.createElement("h2", null, "Investup simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities."), 
+						React.createElement("div", {className: "trends-stats"}, 
+							 this.state.stats ?
+								React.createElement("h3", null, "Indexed ", React.createElement("span", {className: "emph"}, numberWithCommas(this.state.stats.indexed_count)), " company profiles across ", React.createElement("span", {className: "emph"}, this.state.stats.cat_count), " categories.")
+								: null
+							
+						)
+					)
+				)
 		);
 	}
 });

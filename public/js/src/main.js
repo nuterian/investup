@@ -9,6 +9,12 @@ var CompanyThumbnail = React.createClass({
 		};
 	},
 
+	getDefaultProps: function(){
+		return {
+			alignTop: false
+		}
+	},
+
 	componentWillMount: function(){
 		if(!this.props.src) {
 			this.handleError();
@@ -30,15 +36,17 @@ var CompanyThumbnail = React.createClass({
 
 	handleLoad: function(){
 		var imgNode = this.refs.img.getDOMNode();
+		var imgWidth = imgNode.width || this.props.maxSize;
+		var imgHeight = imgNode.height || this.props.maxSize;
 		if(imgNode.width > imgNode.height) {
 			imgNode.style.width = this.props.maxSize + 'px';
 			imgNode.style.height = 'auto';
-			imgNode.style.marginTop = (this.props.maxSize / 2 - (this.props.maxSize * imgNode.height / imgNode.width) / 2) + 'px';
+			imgNode.style.marginTop = ( this.props.maxSize / 2 - (this.props.maxSize * imgNode.height / imgNode.width ) / 2 ) + 'px';	
 		}
 		else {
 			imgNode.style.height = this.props.maxSize + 'px';
 			imgNode.style.width = 'auto';
-			imgNode.style.marginLeft = (this.props.maxSize / 2 - (this.props.maxSize * imgNode.width / imgNode.height) / 2) + 'px';
+			imgNode.style.marginLeft = ( this.props.maxSize / 2 - (this.props.maxSize * imgNode.width / imgNode.height ) / 2 ) + 'px';
 		}
 		this.setState({
 			status: 'loaded'
@@ -52,11 +60,12 @@ var CompanyThumbnail = React.createClass({
 	},
 
 	render: function() {
-	    var className = 'thumb-' + this.state.status;
+	    var className = 'thumb thumb-' + this.state.status;
 	    return (
 	    	<div className={className}>
-		    	<div className="spinner"></div>
-		      	<img src={this.props.src} alt={this.props.alt} onLoad={this.handleLoad} onError={this.handleError} ref="img"/>
+	    		<div className="thumb-placeholder" style={{fontSize: this.props.maxSize/2.1 + 'px', lineHeight: this.props.maxSize + 'px'}}>{this.props.alt ? this.props.alt[0] : String.fromCharCode(65 + Math.random() * 25) }</div>
+		    	<div className="spinner" style={{width: this.props.maxSize + 'px', height: this.props.maxSize + 'px'}}></div>
+		      	<img src={this.props.src} onLoad={this.handleLoad} onError={this.handleError} ref="img"/>
 		     </div>
 	    );
 	}
@@ -68,7 +77,7 @@ var CompanyRow = React.createClass({
         return (
             <li className="company-list-item row">
             	<div className="company-item-img col">
-            		<CompanyThumbnail src={this.props.company.i} maxSize={maxThumbSize} />
+            		<CompanyThumbnail src={this.props.company.i} maxSize={maxThumbSize} alt={this.props.company.n} />
             	</div>
             	<div className="company-name col"><a href={'#' + this.props.company.p}>{this.props.company.n}</a></div>
             </li>
@@ -320,6 +329,7 @@ var CompanyProfileSummary = React.createClass({
 					numEmployees = numberWithCommas(split[0]);
 				}
 			}
+
 		}
 
 		return (
@@ -328,8 +338,8 @@ var CompanyProfileSummary = React.createClass({
 					<div className="profile-summary-content">
 						<div className="profile-panel row">
 							<div className="col">
-								<div className="profile-label">{"Success chance"}</div>
-								<div>{this.props.profile.success || <span className="light">{"n/a"}</span>}</div>
+								<div className="profile-label">{"Success score"}</div>
+								<div>{Math.round(this.props.profile.success.all * 2250) || <span className="light">{"n/a"}</span>}</div>
 							</div>
 							
 							{ !this.props.profile.total_funding || this.props.profile.total_funding == 0 ?
@@ -368,21 +378,20 @@ var CompanyProfile = React.createClass({
 	getInitialState: function(){
 		return {
 			profile: null,
+			meta: null,
 			status: "loading"			
 		}
 	},
 
 	getDefaultProps: function() {
 		return {
-			url: "/profile?p="
+			profileUrl: "/profile?p=",
+			metaUrl: "/meta?p="
 		}
 	},
 
 	loadCompaniesFromServer: function(p) {
-		console.log('loading');
-		this.setState({status: "loading"});
-
-		var queryUrl =  this.props.url + p;
+		var queryUrl =  this.props.profileUrl + p;
 	    $.ajax({
 	      	url: queryUrl,
 	      	dataType: 'json',
@@ -395,13 +404,31 @@ var CompanyProfile = React.createClass({
 	    });		
 	},
 
+	loadMetaFromServer: function(p) {
+		var queryUrl =  this.props.metaUrl + p;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({meta: data, status: "loaded"});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });
+	},
+
 	componentWillMount: function() {
+		this.setState({status: "loading"});
+		this.loadMetaFromServer(this.props.permalink);
 		this.loadCompaniesFromServer(this.props.permalink);
 	},
 
 	componentWillReceiveProps: function(nextprops) {
 		if(this.props.permalink !== nextprops.permalink) {
-			this.loadProfileFromServer(permalink);
+			this.setState({status: "loading"});
+			this.loadMetaFromServer(nextprops.permalink);
+			this.loadProfileFromServer(nextprops.permalink);
 		}
 	},
 
@@ -411,10 +438,10 @@ var CompanyProfile = React.createClass({
 			<div className="profile">
 				<div className="row">
 					<div className="col profile-img">
-						<CompanyThumbnail src="" maxSize={100} />
+						<CompanyThumbnail src={this.state.meta ? this.state.meta.i : null} alt={this.state.meta ? this.state.meta.n : null} maxSize={110} alignTop={true} />
 					</div>
 					<div className="col profile-content">
-						<h2>{this.state.profile ? this.state.profile.name : ''}</h2>
+						<h2>{this.state.meta ? this.state.meta.n : null}</h2>
 						<div className="profile-desc">{this.state.profile ? this.state.profile.description : ''}</div>
 						<CompanyProfileSummary profile={this.state.profile} />
 					</div>
@@ -425,9 +452,49 @@ var CompanyProfile = React.createClass({
 });
 
 var TrendView = React.createClass({
+	getInitialState: function() {
+		return {
+			stats: null
+		}
+	},
+
+	getDefaultProps: function(){
+		return {
+			statsUrl: '/stats' 
+		}
+	},
+
+	loadStatsFromServer: function(){
+		var queryUrl =  this.props.statsUrl;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({stats: data});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });
+	},
+
+	componentWillMount: function(){
+		this.loadStatsFromServer();
+	},
+
 	render: function(){
 		return (
-				<div>{'Trends will be displayed here.'}</div>
+				<div className="trends">
+					<div className="trends-banner">
+						<h2>Investup simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities.</h2>
+						<div className="trends-stats">
+							{ this.state.stats ?
+								<h3>Indexed <span className="emph">{numberWithCommas(this.state.stats.indexed_count)}</span> company profiles across <span className="emph">{this.state.stats.cat_count}</span> categories.</h3>
+								: null
+							}
+						</div>
+					</div>
+				</div>
 		);
 	}
 });

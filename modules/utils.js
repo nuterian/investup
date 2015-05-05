@@ -1,5 +1,7 @@
 var https       		= require('https');
-var profileFeatures     = require('./profileFeatures').profileFeatures;
+var profileFeatures     = require('./profileFeatures');
+var ml                  = require('machine_learning');
+var fs                  = require('fs');
 
 var API_KEY = "26bb2c820b0842a99cba19563c196506";
 
@@ -65,15 +67,53 @@ function getOrganizationProfileFromData(data) {
 	}
 
 	var ret = {};
-	for(var feature in profileFeatures) {
-		ret[feature] = profileFeatures[feature](data.data);
+	for(var feature in profileFeatures.profileFeatures) {
+		ret[feature] = profileFeatures.profileFeatures[feature](data.data);
 	}
 
 	return ret;
 }
 
+function getCategoriesFromData(data) {
+    data = data.data;
+    if(data.relationships.categories) {
+        var res = [];
+        data.relationships.categories.items.forEach(function(cat) {
+            res.push(cat.properties.name);
+        });
+        return res;
+    }
+    return [];
+}
+
+function getPredictionInput(meta, data) {
+    var train = [];
+    profileFeatures.trainingFeatures.forEach(function(f){
+        train.push(profileFeatures.profileFeatures[f](data.data));
+    });
+    train.push(meta.s);
+    return train;
+}
+
+function getPrediction(input, tree) {
+    var dt = new ml.DecisionTree({
+        data: [],
+        result: []
+    });
+    dt.tree = tree;
+    return dt.classify(input);
+}
+
+function readTree(category) {
+    return JSON.parse(fs.readFileSync('./data/trees/' + category + '.json'));
+}
+
 module.exports = {
 	getOrganizationData: getOrganizationData,
 	getKeywordMatchScore: getKeywordMatchScore,
-	getOrganizationProfileFromData: getOrganizationProfileFromData
+	getOrganizationProfileFromData: getOrganizationProfileFromData,
+    getCategoriesFromData: getCategoriesFromData,
+    getPredictionInput: getPredictionInput,
+    getPrediction: getPrediction,
+    readTree: readTree
 }

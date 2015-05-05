@@ -211,6 +211,6 @@ module.exports = {
 		'num_investors_orgs',
 		'num_investors_persons',
 		'funding_rounds',
-		'funding_per_round,success'
+		'funding_per_round'
 	]
 }

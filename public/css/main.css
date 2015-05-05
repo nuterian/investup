@@ -3,8 +3,9 @@ body {
 }
 
 a, a:link, a:visited {
-    color: #3850D9;
+    color: #2A40C9;
     text-decoration: none;
+    font-weight: 500;
 }
 
 a:hover {
@@ -221,7 +222,7 @@ ul.company-list {
 .spinner {
   width: 40px;
   height: 40px;
-  background-color: #333;
+  background-color: #888;
   -webkit-animation: rotateplane 1.2s infinite ease-in-out;
   animation: rotateplane 1.2s infinite ease-in-out;
 }
@@ -255,7 +256,7 @@ ul.company-list {
 .spinner-bounce > div {
   width: 18px;
   height: 18px;
-  background-color: #666;
+  background-color: #e74c3c;
 
   border-radius: 100%;
   display: inline-block;
@@ -292,17 +293,31 @@ ul.company-list {
 }
 
 
-.thumb-loaded .spinner, .thumb-failed .spinner, .thumb-loading img {
+.thumb {
+    text-align: center;
+    background-color: #fff;
+}
+
+.thumb.thumb-failed {
+    background-color: #888;
+}
+
+.thumb-placeholder{
+    font-weight: 700;
+    color: #fff;
     display: none;
 }
 
+.thumb-loaded .spinner, .thumb-failed .spinner, .thumb-loading img{
+    display: none;
+}
+
+.thumb-failed  .thumb-placeholder {
+    display:block;
+}
+
 .thumb-failed img {
-    background-color: #fff;
-    border:2px dashed #ddd;
-    width: 50px;
-    height: 50px;
-    content: "";
-    display: block;
+    display:none;
 }
 
 .pager {
@@ -331,6 +346,7 @@ ul.company-list {
     background-color: #e74c3c;
     color :#fff;
     cursor:pointer;
+    text-decoration: none;
 }
 
 .page-link.page-curr, .page-link.page-curr:hover {
@@ -342,11 +358,23 @@ ul.company-list {
 }
 
 .profile-img {
-    width: 140px;
+    width: 120px;
+    height: 120px;
+    margin-top: 30px;
+    box-sizing: border-box;
+    text-align:center;
+}
+
+.profile-img img {
+    vertical-align:top;
+    float: none;
+    border: 1px solid #ddd;
+    padding: 5px;
 }
 
 .profile-content {
-    width: 860px;
+    width: 850px;
+    margin-left: 30px;
 }
 
 .profile-content h2{
@@ -358,6 +386,7 @@ ul.company-list {
 .profile-desc {
     padding: 0 0 20px;
     color: #888;
+    font-weight: 400;
 }
 
 .profile-summary{
@@ -410,6 +439,52 @@ ul.company-list {
 
 .profile-panel .col:last-child {
     border: none;
+}
+
+.trends {
+    margin-top:30px;
+}
+
+.trends-banner {
+    width: 100%;
+    text-align: center;
+}
+
+.trends h2 {
+    font-size: 22px;
+    line-height: 34px;
+    margin: 50px 0 70px;
+    font-weight: 300;
+    color: #000;
+}
+
+.trends-stats {
+    position: relative;
+    border-top: 1px solid #eee;
+}
+
+.trends-stats::after{
+    position: absolute;
+    content: "STATS";
+    font-weight: 300;
+    background-color: #fff;
+    padding: 0 30px;
+    color: #aaa;
+    font-size: 18px;
+    line-height: 36px;
+    top: -18px;
+    left: 42%;
+}
+
+.trends h3 {
+    font-size: 32px;
+    font-weight: 300;
+    margin: 35px 0;
+}
+
+.emph {
+    font-weight: 700;
+    font-size: 1.1em;
 }
 
 .light {
