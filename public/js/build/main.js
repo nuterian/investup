@@ -119,12 +119,42 @@ function pager(page) {
 	return React.createElement("div", {className: "pager row"}, pageLinks)
 }
 
+var SearchResultRelatedList = React.createClass({displayName: "SearchResultRelatedList",
+	getDefaultProps: function(){
+		return {
+			companies: []
+		};
+	},
+
+	render: function(){
+		var rows = [];
+		this.props.companies.forEach(function(company) {
+			rows.push(
+				React.createElement("li", {className: "row"}, 
+					React.createElement("div", {className: "col company-item-img"}, React.createElement(CompanyThumbnail, {maxSize: "30", src: company.i})), 
+					React.createElement("div", {className: "col", className: "company-name"}, React.createElement("a", {href: '#' + company.p}, company.n))
+				)
+			);
+		});
+
+		return (
+			React.createElement("div", null, 
+				React.createElement("h3", {className: "light"}, 'Related'), 
+				React.createElement("ul", {className: "company-list"}, 
+					rows
+				)
+			)
+		);
+	}
+});
+
 var SearchResultList = React.createClass({displayName: "SearchResultList",
 	getInitialState: function() {
 		return {
 			companies: [],
-			currentPage: 1,
-			status: 'noquery'
+			related: [],
+			currentPage: null,
+			status: 'noquery',
 		}
 	},
 
@@ -135,8 +165,8 @@ var SearchResultList = React.createClass({displayName: "SearchResultList",
 	},
 
 	loadCompaniesFromServer: function(q) {
-		this.setState({status: 'loading'});
-		var queryUrl =  this.props.url + q;
+		this.setState({status: 'loading', currentPage: null});
+		var queryUrl =  this.props.url + encodeURIComponent(q);
 	    $.ajax({
 	      	url: queryUrl,
 	      	dataType: 'json',
@@ -144,7 +174,27 @@ var SearchResultList = React.createClass({displayName: "SearchResultList",
 	        	this.setState({companies: data, currentPage: 1, status: 'loaded'});
 	      	}.bind(this),
 	      	error: function(xhr, status, err) {
+	      		this.setState({companies: [], currentPage: 1, status: 'failed'});
 	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });		
+	},
+
+	loadRelatedFromServer: function() {
+		this.setState({related: []});
+		var data = this.getPage().companies;
+	    $.ajax({
+	      	url: '/related',
+	      	type: 'POST',
+	      	dataType: 'json',
+	      	data: JSON.stringify(data.map(function(c){ return c.p; })),
+	      	contentType: 'application/json',
+	      	success: function(data) {
+	        	this.setState({related: data});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	      		this.setState({related: []});
+	        	console.error('/related', status, err.toString());
 	      	}.bind(this)
 	    });		
 	},
@@ -167,11 +217,10 @@ var SearchResultList = React.createClass({displayName: "SearchResultList",
   	},
 
 	getPage: function() {
-	   	var start = this.props.pageSize * (this.state.currentPage - 1);
+	   	var start = this.props.pageSize * ((this.state.currentPage || 1) - 1);
 	    var end = start + this.props.pageSize;
-
 	    return {
-	      	currentPage: this.state.currentPage, 
+	      	currentPage: this.state.currentPage || 1, 
 	      	companies: this.state.companies.slice(start, end), 
 	      	numPages: this.getNumPages(), 
 	      	handleClick: function(pageNum) {
@@ -192,6 +241,12 @@ var SearchResultList = React.createClass({displayName: "SearchResultList",
 
 	handlePageChange: function(pageNum) {
 	    this.setState({currentPage: pageNum});
+	},
+
+	componentDidUpdate: function(nextProps, nextState) {
+		if(this.state.currentPage !== nextState.currentPage) {
+			this.loadRelatedFromServer();
+		}
 	},
 
     render: function() {
@@ -218,11 +273,21 @@ var SearchResultList = React.createClass({displayName: "SearchResultList",
         }
 
         return (
-        	React.createElement("div", {className: "list-wrapper"}, 
-        		React.createElement("div", {className: "result-status"}, resultStatus), 
-	        	React.createElement("ul", {className: "company-list"}, 
-	        		rows
-	        	), 
+        	React.createElement("div", null, 
+        		React.createElement("div", {className: "row"}, 
+		        	React.createElement("div", {className: "list-wrapper col"}, 
+		        		React.createElement("div", {className: "result-status"}, resultStatus), 
+			        	React.createElement("ul", {className: "company-list"}, 
+			        		rows
+			        	)
+				    ), 
+			        React.createElement("div", {className: "related-list col-right"}, 
+			        this.state.related.length > 0 ?
+		        		React.createElement(SearchResultRelatedList, {companies: this.state.related})
+		        		: null
+			        
+			        )
+		        ), 
 	        	pager(page)
         	)
         );
@@ -264,6 +329,108 @@ var BounceSpinner = React.createClass({displayName: "BounceSpinner",
 	}
 });
 
+function getMinPow10(x) {
+	var pow = 0;
+	while(Math.floor(x/=10)) {
+		pow++;
+	}
+	return pow;
+}
+
+
+function generateFundingGraph(el, data, width, height) {
+	var margin = {top: 30, right: 20, bottom: 30, left: 60},
+	    width = width - margin.left - margin.right,
+	    height = height - margin.top - margin.bottom;
+
+	// Parse the date / time
+	var parseDate = d3.time.format("%Y-%m-%d").parse;
+
+	// Set the ranges
+	var x = d3.time.scale().range([0, width]);
+	var y = d3.scale.linear().range([height, 0]);
+
+	// Define the axes
+	var xAxis = d3.svg.axis().scale(x)
+	    .orient("bottom").ticks(5);
+
+	var yAxis = d3.svg.axis().scale(y)
+	    .orient("left").ticks(5);
+
+	// Define the line
+	var line = d3.svg.line()
+	    .x(function(d) { return x(d.d); })
+	    .y(function(d) { return y(d.a); });
+	    
+	// Adds the svg canvas
+	var svg = d3.select(el).html('')
+	    .append("svg")
+	        .attr("width", width + margin.left + margin.right)
+	        .attr("height", height + margin.top + margin.bottom)
+	    .append("g")
+	        .attr("transform", 
+	              "translate(" + margin.left + "," + margin.top + ")");
+
+
+	var sumAmmounts = {};	
+	var minDate = parseDate(data.founded_on) || Number.POSITIVE_INFINITY, minAmount = Number.POSITIVE_INFINITY;
+	var fundingRounds =  data.funding_rounds;
+	fundingRounds.forEach(function(round) {
+		var roundDate = parseDate(round.d);
+		if(roundDate < minDate) {
+			minDate = roundDate;
+		}
+
+		if(!(roundDate.getUTCFullYear() in sumAmmounts)){
+			sumAmmounts[roundDate.getUTCFullYear()] = 0;
+		}
+		sumAmmounts[roundDate.getUTCFullYear()] += round.a;
+	});
+
+	
+	for(var year in sumAmmounts) {
+		if(sumAmmounts[year] < minAmount) {
+			minAmount = sumAmmounts[year];
+		}
+	}
+	var minAmountPow10 = getMinPow10(minAmount);
+	minAmountPow10 = Math.pow(10, minAmountPow10 - 2);
+
+	var inputData = [], maxDate = Number.NEGATIVE_INFINITY;
+	parseDate = d3.time.format("%Y").parse;
+	for(var year in sumAmmounts) {
+		var date = parseDate(year);
+		if(date > maxDate) {
+			maxDate = date;
+		}
+		inputData.push({d: date, a: sumAmmounts[year] / minAmountPow10})
+	}
+	inputData.sort(function(a, b) {
+		return a.d - b.d;
+	});
+    if(minDate < inputData[0].d) {
+    	inputData.unshift({d: minDate, a: 0});	
+    	minAmount = 0;
+    }
+    else {
+    	minDate = inputData[0].d;
+    }
+
+    //console.log(new Date(minDate.getUTCFullYear() - 1, 0), inputData[0].d, Math.min(parseDate(maxDate.getUTCFullYear() + 4 + ''), new Date()));
+    x.domain([new Date(minDate.getUTCFullYear() - 1, 0), Math.min(parseDate(maxDate.getUTCFullYear() + 4 + ''), new Date())]);
+    y.domain([minAmount/minAmountPow10, d3.max(inputData, function(d) { return d.a; })]);
+
+    svg.append("g").attr("class", "x axis").attr("transform", "translate(0," + height + ")").call(xAxis);
+    svg.append("g").attr("class", "y axis").call(yAxis);
+
+    svg.append("path").attr("class", "line").attr("d", line(inputData));
+
+    svg.selectAll(".dot")
+	  	.data(inputData).enter()
+	  	.append("circle").attr('cx', function(d) { return x(d.d); }).attr('cy', function(d) { return y(d.a); }).attr('r', 3).attr('fill', '#16a085');
+
+}
+
 var CompanyProfileSummary = React.createClass({displayName: "CompanyProfileSummary",
 	statuses: {
 		LOADING: 'loading',
@@ -284,7 +451,10 @@ var CompanyProfileSummary = React.createClass({displayName: "CompanyProfileSumma
 	},
 
 	componentWillReceiveProps: function(nextProps) {
-		if(nextProps.profile !== null && this.props.profile !== nextProps.profile) {
+		if(nextProps.profile == null ){
+			this.setState({status: this.statuses.LOADING});
+		}
+		else if(!_.isEqual(this.props.profile, nextProps.profile)) {
 			this.setState({status: this.statuses.LOADED})
 		}
 	},
@@ -374,6 +544,104 @@ var CompanyProfileSummary = React.createClass({displayName: "CompanyProfileSumma
 	}
 });
 
+var CompanyCondensedRow = React.createClass({displayName: "CompanyCondensedRow",
+	render: function(){
+		var maxThumbSize = 36;
+		return (
+            React.createElement("li", {className: "company-list-item row"}, 
+            	React.createElement("div", {className: "company-item-img col"}, 
+            		React.createElement(CompanyThumbnail, {src: this.props.company.i, maxSize: maxThumbSize, alt: this.props.company.n})
+            	), 
+            	React.createElement("div", {className: "company-name col"}, React.createElement("a", {href: '#' + this.props.company.p}, this.props.company.n))
+            )
+		);
+	}
+})
+
+var CompanyCondensedListing = React.createClass({displayName: "CompanyCondensedListing",
+	getDefaultProps: function(){
+		return {
+			companies: []
+		}
+	},
+
+	render: function() {
+		var companies = this.props.companies;
+		var rows = [];
+		for(var i = 0; i < Math.min(4, companies.length); i++) {
+			rows.push(React.createElement(CompanyCondensedRow, {company: companies[i]}));
+		}
+        return (
+        	React.createElement("ul", {className: "company-list company-list-condensed"}, 
+        		rows
+        	)
+        );
+	}
+});
+
+
+var CompanyCompetitors = React.createClass({displayName: "CompanyCompetitors",
+	getInitialState: function() {
+		return {
+			competitors: { c: [] }
+		}
+	},
+
+	getDefaultProps: function(){
+		return {
+			permalink: null,
+			url: '/competitors?p='
+		}
+	},
+
+	loadCompetitorsFromServer: function(p) {
+		var queryUrl = this.props.url + p;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({competitors: data});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });	
+	},
+
+	componentWillMount: function(){
+		if(this.props.permalink) {
+			this.setState({competitors: { c: [] }});
+			this.loadCompetitorsFromServer(this.props.permalink);
+		}
+	},
+
+	componentWillReceiveProps: function(nextProps){
+		console.log(nextProps);
+		if(this.props.permalink !== nextProps.permalink) {
+			this.setState({competitors: { c: [] }});
+			this.loadCompetitorsFromServer(this.props.permalink);
+		}
+	},
+
+	render: function(){
+		//console.log('COMPET: ', this.props, this.state.competitors.c);
+		return (
+			React.createElement("div", null, 
+				 this.state.competitors.c.length > 0 ?
+				React.createElement("div", {className: "profile-section"}, 
+					React.createElement("div", {className: "row section-title"}, 
+						React.createElement("h3", {className: "col"}, 'Competitors'), 
+						React.createElement("div", {className: "col-right"}, this.state.competitors.r, React.createElement("span", {className: "light"}, '/' + this.state.competitors.t), " ")
+					), 
+					React.createElement(CompanyCondensedListing, {companies: this.state.competitors.c})
+				)
+				: null
+				
+			)
+		);
+	}
+});
+
 var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 	getInitialState: function(){
 		return {
@@ -390,7 +658,7 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 		}
 	},
 
-	loadCompaniesFromServer: function(p) {
+	loadProfileFromServer: function(p) {
 		var queryUrl =  this.props.profileUrl + p;
 	    $.ajax({
 	      	url: queryUrl,
@@ -410,7 +678,7 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 	      	url: queryUrl,
 	      	dataType: 'json',
 	      	success: function(data) {
-	        	this.setState({meta: data, status: "loaded"});
+	        	this.setState({meta: data});
 	      	}.bind(this),
 	      	error: function(xhr, status, err) {
 	        	console.error(queryUrl, status, err.toString());
@@ -419,21 +687,26 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 	},
 
 	componentWillMount: function() {
-		this.setState({status: "loading"});
+		this.setState({status: "loading", profile: null});
 		this.loadMetaFromServer(this.props.permalink);
-		this.loadCompaniesFromServer(this.props.permalink);
+		this.loadProfileFromServer(this.props.permalink);
 	},
 
 	componentWillReceiveProps: function(nextprops) {
 		if(this.props.permalink !== nextprops.permalink) {
-			this.setState({status: "loading"});
+			this.setState({status: "loading", profile: null});
 			this.loadMetaFromServer(nextprops.permalink);
 			this.loadProfileFromServer(nextprops.permalink);
 		}
 	},
 
-	render: function(){
+	componentDidUpdate: function(){
+		if(this.state.profile && this.state.profile.funding_rounds.length > 0){
+			generateFundingGraph(this.refs.fundingGraph.getDOMNode(), this.state.profile, 500, 276);
+		}
+	},
 
+	render: function(){
 		return (
 			React.createElement("div", {className: "profile"}, 
 				React.createElement("div", {className: "row"}, 
@@ -443,7 +716,29 @@ var CompanyProfile = React.createClass({displayName: "CompanyProfile",
 					React.createElement("div", {className: "col profile-content"}, 
 						React.createElement("h2", null, this.state.meta ? this.state.meta.n : null), 
 						React.createElement("div", {className: "profile-desc"}, this.state.profile ? this.state.profile.description : ''), 
-						React.createElement(CompanyProfileSummary, {profile: this.state.profile})
+						React.createElement(CompanyProfileSummary, {profile: this.state.profile}), 
+						 this.state.profile !== null ?
+						React.createElement("div", {className: "row"}, 
+							React.createElement("div", {className: "col", style: {width: '550px'}}, 
+							this.state.profile.funding_rounds.length > 0 ?
+								React.createElement("div", {className: "profile-section", style: {width: '100%'}}, 
+									React.createElement("div", {className: "row section-title"}, 
+										React.createElement("h3", {className: "col"}, 'Funding'), 
+										 this.state.profile.total_funding &&  this.state.profile.age ?
+										React.createElement("div", {className: "col-right"}, numeral(Math.round(this.state.profile.total_funding/(this.state.profile.age - 6))).format('($ 0.00a)') + '/mo')
+										: null
+									), 
+									React.createElement("div", {ref: "fundingGraph"})	
+								)
+								: null
+							
+							), 
+							React.createElement("div", {className: "col-right", style: {width: '270px'}}, 
+								React.createElement(CompanyCompetitors, {permalink: this.props.permalink})
+							)
+						)
+						: null
+										
 					)
 				)
 			)
@@ -484,17 +779,17 @@ var TrendView = React.createClass({displayName: "TrendView",
 
 	render: function(){
 		return (
-				React.createElement("div", {className: "trends"}, 
-					React.createElement("div", {className: "trends-banner"}, 
-						React.createElement("h2", null, "Investup simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities."), 
-						React.createElement("div", {className: "trends-stats"}, 
-							 this.state.stats ?
-								React.createElement("h3", null, "Indexed ", React.createElement("span", {className: "emph"}, numberWithCommas(this.state.stats.indexed_count)), " company profiles across ", React.createElement("span", {className: "emph"}, this.state.stats.cat_count), " categories.")
-								: null
-							
-						)
+			React.createElement("div", {className: "trends"}, 
+				React.createElement("div", {className: "trends-banner"}, 
+					React.createElement("h2", null, "Investup simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities."), 
+					React.createElement("div", {className: "trends-stats"}, 
+						 this.state.stats ?
+							React.createElement("h3", null, "Indexed ", React.createElement("span", {className: "emph"}, numberWithCommas(this.state.stats.indexed_count)), " company profiles across ", React.createElement("span", {className: "emph"}, this.state.stats.cat_count), " categories.")
+							: null
+						
 					)
 				)
+			)
 		);
 	}
 });
@@ -516,7 +811,7 @@ var App = React.createClass({displayName: "App",
 
 	handleOnQuery: function(q) {
 		if(q.length >= 3) {
-			this.router.setRoute('/search/' + q);
+			this.router.setRoute('/search/' + encodeURIComponent(q));
 		}
 		else if(this.state.currPage !== AppPages.PROFILE){
 			this.router.setRoute('/');
@@ -531,7 +826,7 @@ var App = React.createClass({displayName: "App",
 				setState({currPage: AppPages.HOME})
 			},
 			'/search/:query': function(query) {
-				setState({currPage: AppPages.SEARCH, query: query});
+				setState({currPage: AppPages.SEARCH, query: decodeURIComponent(query)});
 			},
 			'/:permalink': function(permalink) {
 				setState({currPage: AppPages.PROFILE, permalink: permalink, query: ''});
@@ -542,7 +837,6 @@ var App = React.createClass({displayName: "App",
 
 	render: function() {
 		var content;
-		console.log('rendering', this.state.currPage);
 		if(this.state.currPage == AppPages.HOME) {
 			content =
 	            React.createElement(TrendView, null);

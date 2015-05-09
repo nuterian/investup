@@ -160,7 +160,42 @@ fieldset[disabled] .btn-default.active {
 }
 
 .list-wrapper{
-    padding-left: 145px;
+    margin-left: 145px;
+    width: 550px;
+}
+
+.related-list {
+    width: 300px;
+}
+
+.related-list h3{
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 400;  
+    color: #aaa;
+    margin: 30px 0 10px;
+}
+
+.related-list .company-name a, .related-list .company-name a:link {
+    line-height: 30px;
+    font-size: 18px;
+    font-weight: 300;
+    padding-left: 20px;
+    width: 220px;  
+}
+
+.related-list li {
+    opacity: 0.5;
+}
+
+.related-list li:hover{
+    opacity: 1;
+}
+
+.related-list .company-item-img {
+    width: 30px;
+    height: 30px;
+    margin-right: 20px;
 }
 
 ul.company-list {
@@ -168,21 +203,36 @@ ul.company-list {
     margin:0; padding:0;
 }
 
-.company-list-item {
+.company-list-item, .related-list li {
     padding: 9px 0 25px;
 }
 
-.company-name {
-    max-width: 800px;
-    text-overflow: ellipsis;
+.company-list-condensed .company-list-item {
+    padding: 15px 0;
 }
 
 .company-name a:link, .company-name a {
     text-decoration: none;
     color: #000;
-    font-size: 20px;
+    font-size: 24px;
+    font-weight: 300;
     line-height: 40px;
     transition: color 0.1s linear;
+    width: 470px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.company-list-condensed .company-name a:link, .company-list-condensed .company-name a {
+    font-weight: 300;
+    font-size: 17px;
+    max-width: 160px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    display:block;
+    line-height: 36px;
 }
 
 .company-name a:hover {
@@ -442,6 +492,26 @@ ul.company-list {
     border: none;
 }
 
+.profile-section {
+    margin: 40px 0 30px;
+    padding: 20px;
+    box-sizing: border-box;
+    border: 1px solid #eee;
+    border-radius: 2px;
+}
+
+.profile-section h3 {
+    font-weight:400;
+    margin: 0;
+    padding-bottom: 0;
+}
+
+.profile-section .section-title {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
 .trends {
     margin-top:30px;
 }
@@ -509,4 +579,26 @@ ul.company-list {
 }
 .col-right {
     float: right;
+}
+
+
+/*
+ SVG Styles
+ */
+path { 
+    stroke: #16a085;
+    stroke-width: 2;
+    fill: none;
+}
+
+.tick {
+    font-size: 12px;
+}
+
+.axis path,
+.axis line {
+    fill: none;
+    stroke: #dddddd;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
 }

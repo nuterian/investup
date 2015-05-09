@@ -167,7 +167,9 @@ var profileFeatures = {
 			var ret = [];
 			rounds = rounds.items;
 			rounds.forEach(function(r) {
-				ret.push({d:r.properties.announced_on,a:r.properties.money_raised_usd});
+				if(r.properties.money_raised_usd !== null && r.properties.announced_on !== null) {
+					ret.push({d:r.properties.announced_on,a:r.properties.money_raised_usd});
+				}
 			});
 			return ret;
 		}

@@ -2,8 +2,12 @@ var express     = require('express');
 var app         = express();
 var fs          = require('fs');
 var utils       = require('./modules/utils');
+var d3          = require('d3');
+var bodyParser  = require('body-parser');
+var Heap        = require('heap');
 
 app.use(express.static('public'));
+app.use(bodyParser.json());
 app.set('views', './views');
 app.set('view engine', 'jade');
 
@@ -20,20 +24,20 @@ app.get('/stats', function(req,res){
 
 app.get('/companies', function(req, res) {
     var q = req.query.q;
-
-    if(q.length < 1) {
+    if(!q || q.length < 1) {
         return res.send({error: 'Too few characters in query.'});
     }
 
     var _q = q.toLowerCase();
     var _keys = _q.split(' ');
 
-    var r = [];
+    var r = [], matched={};
     for(var perm in companies) {
         var c = companies[perm];
         for(var i = 0; i < _keys.length; i++) {
-            if (_keys[i].length > 2 && c.n.toLowerCase().indexOf(_keys[i]) > -1) {                
+            if (_keys[i].length > 2 && !matched[perm] && c.n.toLowerCase().indexOf(_keys[i]) > -1) {                
                 r.push({n:c.n, p: perm, i:c.i, s: c.s});
+                matched[perm] = true;
             }            
         }        
     }
@@ -57,28 +61,310 @@ app.get('/companies', function(req, res) {
     res.send(r);
 });
 
+app.post('/related', function(req, res) {
+    var list = req.body;
+    var result = [], competitors = [], catMap = {};
+    list.forEach(function(c){
+        if(profileCache.hasProfile(c)) {
+            var profile = profileCache.getProfile(c);
+            profile.competitors.forEach(function(competitor){
+                if(competitor in companies && list.indexOf(competitor) === -1) {
+                    var companyProfile = JSON.parse(JSON.stringify(companies[competitor]));
+                    companyProfile.p = competitor;
+                    competitors.push(companyProfile);
+                    list.push(competitor);
+                }
+            });
+        }
+
+        companies[c].c.forEach(function(category) {
+            if(!(category in catMap)){
+                if(!ranker.has(category)) {
+                    ranker.add(category);
+                }
+                ranker.getNLargest(category, 10).forEach(function(company) {
+                    if(list.indexOf(company.p) === -1 && competitors.indexOf(company.p) === -1){
+                        var companyProfile = JSON.parse(JSON.stringify(companies[company.p]));
+                        companyProfile.p = company.p;
+                        result.push(companyProfile); 
+                        list.push(company.p);                           
+                    }
+                });
+                catMap[category] = true;
+            }
+        });
+    });
+
+    function relatedSort(a, b) {
+        var aScore = a.s;
+        var bScore = b.s;
+        if(profileCache.hasProfile(a.p)) {
+            aScore = profileCache.getProfile(a.p).success.all;
+        }
+        if(profileCache.hasProfile(b.p)) {
+            bScore = profileCache.getProfile(b.p).success.all;
+        }
+
+        return bScore - aScore;
+    }
+
+    competitors.sort(relatedSort);
+    result.sort(relatedSort);
+
+    var competitorsCount = Math.min(5, competitors.length);
+    competitors = competitors.slice(0, competitorsCount);
+    result = result.slice(0, 11 - competitorsCount);
+    res.send(competitors.concat(result));
+});
+
+app.get('/competitors', function(req, res) {
+    var permalink = req.query.p;
+    if(!profileCache.hasProfile(permalink)) {
+        return res.send(null);
+    }
+
+    var profile = profileCache.getProfile(permalink);
+    var competitors = [];
+    profile.competitors.forEach(function(c) {
+        if(!companies[c]) return;
+        var meta = JSON.parse(JSON.stringify(companies[c]));
+        meta.p = c;
+        competitors.push(meta);
+    });
+    competitors.sort(function(a, b) {
+        return b.s - a.s;
+    });
+
+    var rank = 1, i = 0;
+    while(competitors[i] && companies[permalink].s < competitors[i++].s) {
+        rank++;
+    }
+
+    res.send({r: rank, t: competitors.length + 1, c: competitors});
+});
+
 app.get('/meta', function(req, res) {
     res.send(companies[req.query.p]);
 });
 
-app.get('/profile', function(req, res) {
-    var permalink = req.query.p;
-    var retries = 4;
-    var profileData;
+function calcSuccessScores(permalink, data) {
+    var success = {}, max = 0;
+    utils.getCategoriesFromData(data).forEach(function(cat) {
+        if(companies[permalink].c.indexOf(cat) < 0) return;
+        var tree = utils.readTree(cat);
+        var pred = utils.getPrediction(utils.getPredictionInput(companies[permalink], data), tree);
 
-    var profileFilePath = './data/comps/' + permalink + '.json';
-    try {
-        //Check if local copy of profile exists.
-        var profileStats = fs.lstatSync(profileFilePath);
-        profileData = fs.readFile(profileFilePath, 'utf8', function(err, data) {
-            if(err) {
-                return res.send({});
+        var total = 0, score = 0;
+        for(var l in pred) {
+            total += pred[l];
+        }
+        if(pred["1"] !==undefined) {
+            score = 0.5 + companies[permalink].s * 0.5 * pred["1"]/total;
+        }
+        else {
+            score = companies[permalink].s * 0.5 * pred["0"]/total;
+        }
+        success[cat] = score.toPrecision(5);
+        if(score > max) {
+            max = score;
+        }
+    });
+    success.all = max;
+    return success;
+}
+
+
+var ranker = (function() {
+
+    function heapCmpFunction(a, b){
+        return a.s - b.s;
+    }
+    var MAX_HEAP_LENGTH = 10;
+    var FILE_PATH = './data/ranks.json';
+    var heaps = {};
+
+    function setupRanksForCateory(category) {
+        console.log("Ranking profiles for category " + category + "...");
+        for(var company in companies) {
+            if(companies[company].c && companies[company].c.indexOf(category) > -1) {
+                var score;
+                if(profileCache.hasProfile(company)) {
+                    var profile = profileCache.getProfile(company);
+                    score = profile.success[category];
+                }
+                else {
+                    score = companies[company].s;
+                }
+
+                if(heaps[category].size() < MAX_HEAP_LENGTH) {
+                    heaps[category].push({p: company, s: score});    
+                }
+                else {
+                    updateRank(category, company, score, true); 
+                }                
             }
-            res.send(data);
+        }
+        saveToFile();
+    }
+
+    function addCategory(category) {
+        if(hasCategory(category)) return;
+
+        heaps[category] = new Heap(heapCmpFunction);
+        setupRanksForCateory(category);
+    }
+
+    function hasCategory(category) {
+        return category in heaps;
+    }
+
+    function setupAllRanks() {
+        if(loadFromFile()) {
+            return;
+        }
+        addCategory("Health and Wellness");
+        addCategory("Software");
+        addCategory("Biotechnology");
+    }
+
+    function updateRank(category, permalink, score, dontSave) {
+        if(!hasCategory(category)) return;
+
+        var index = heaps[category].toArray().map(function(x){ return x.p; }).indexOf(permalink);
+        if( index > -1 ){
+            heaps[category].nodes[index].s = score;
+            heaps[category].heapify();
+            if(!dontSave) 
+                saveToFile();
+        }
+        else if(score > heaps[category].peek().s) {
+            heaps[category].replace({p: permalink, s: score});
+            if(!dontSave) 
+                saveToFile();
+        }
+    }
+
+    function exportObject() {
+        var result = {};
+        for(var category in heaps) {
+            result[category] = heaps[category].toArray();
+        }
+        return result;
+    }
+
+    function importJSON(json) {
+        var object = JSON.parse(json);
+        heaps = {};
+        for(var category in object) {
+            heaps[category] = new Heap(heapCmpFunction);
+            object[category].forEach(function(company) {
+                heaps[category].push(company);
+            });
+        }
+    }
+
+    function saveToFile() {
+        try {
+            fs.writeFile(FILE_PATH, JSON.stringify(exportObject()), function(err) {
+                if(err) throw err;
+            });
+        }
+        catch(e){
+            return false;
+        }
+        return true;
+    }
+
+    function loadFromFile() {
+        try{
+            var json = fs.readFileSync(FILE_PATH, 'utf8');
+            importJSON(json);
+        }
+        catch(e) {
+            return false;
+        }
+        return true;        
+    }
+
+    function getNLargest(category, n) {
+        return Heap.nlargest(heaps[category].toArray(), n, heapCmpFunction);
+    }
+
+    return {
+        init: setupAllRanks,
+        add: addCategory,
+        has: hasCategory,
+        update: updateRank,
+        getNLargest: getNLargest
+    };
+})();
+
+var profileCache = (function() {
+    var profiles = {};
+    var PROFILE_DIR = './data/profiles/';
+
+    var memcache = (function(){
+        var map = {};
+        var queue = [];
+        var MAX_SIZE = 10;
+
+        function has(id) {
+            return id in map;
+        }
+
+        function save(id, d) {
+            if(queue.length > MAX_SIZE) {
+                var first = queue.shift();
+                delete map[first];
+            }
+            queue.push(id);
+            map[id] = d;
+        }
+
+        function get(id) {
+            var index = queue.indexOf(id);
+            if(index > -1) {
+                queue.slice(index, 1);
+                queue.push(id);
+            }
+            return map[id];
+        }
+
+        return {
+            has: has,
+            save: save,
+            get: get
+        };
+    })();
+
+    function readCachedProfilesToIndex() {
+        var files = fs.readdirSync(PROFILE_DIR);
+        files.forEach(function(f) {
+            var permalink = f.split(".json")[0];
+            profiles[permalink] = '';
         });
     }
-    catch (e) {
-        // If local copy of profile doesn't exist, get data using API.
+
+    function isProfileInCache(permalink) {
+        return permalink in profiles;
+    }
+
+    function readProfileFromCache(permalink) {
+        try {
+            if(memcache.has(permalink)) {
+                return memcache.get(permalink);
+            }
+            var profile = JSON.parse(fs.readFileSync(PROFILE_DIR + permalink + ".json", "utf8"));
+            memcache.save(permalink, profile);
+            return profile;
+        }
+        catch(e) {
+            return null;
+        }
+    }
+
+    function saveProfileToCache(permalink, callback){
+        var retries = 4;
         (function getData() {
             utils.getOrganizationData(permalink, function(data, resCode) {
                 if(resCode !== 200 && --retries >= 0) {
@@ -86,57 +372,66 @@ app.get('/profile', function(req, res) {
                 }
 
                 try{
-                    var dataObject = JSON.parse(data);
-                    profileData = utils.getOrganizationProfileFromData(dataObject);
-
-                    var success = {}, max = 0;
-                    utils.getCategoriesFromData(dataObject).forEach(function(cat) {
-                        if(companies[permalink].c.indexOf(cat) < 0) return;
-                        var tree = utils.readTree(cat);
-                        var pred = utils.getPrediction(utils.getPredictionInput(companies[permalink], dataObject), tree);
-
-                        var total = 0, score = 0;
-                        for(var l in pred) {
-                            total += pred[l];
+                    var orgData = JSON.parse(data);
+                    profileData = utils.getOrganizationProfileFromData(orgData);
+                    profileData.success = calcSuccessScores(permalink, orgData);
+                    fs.writeFile(PROFILE_DIR + permalink + ".json", JSON.stringify(profileData), function(err) {
+                        if(err){
+                            console.error(err.message);
                         }
-                        if(pred["1"] !==undefined) {
-                            score = 0.5 + companies[permalink].s * 0.5 * pred["1"]/total;
-                        }
-                        else {
-                            score = companies[permalink].s * 0.5 * pred["0"]/total;
-                        }
-                        success[cat] = score.toPrecision(5);
-                        if(score > max) {
-                            max = score;
-                        }
+                        profiles[permalink] = '';
+                        memcache.save(permalink, profileData);
+                        companies[permalink].c.forEach(function(category) {
+                            ranker.update(category, permalink, profileData.success.all);
+                        });
                     });
-
-                    success["all"] = max;
-                    profileData.success = success;
-
-                    fs.writeFile(profileFilePath, JSON.stringify(profileData), function(err) {});
-                    res.send(profileData);   
+                    callback(profileData); 
                 }
                 catch(e) {
-                    res.send({});
+                    if(--retries >= 0) {
+                        return getData();
+                    }
                     console.log('Error getting data (' + resCode + ')', data.split('\n').slice(0,3), e.stack);
+                    callback(null);
                 }
-                
             });
-        })();        
+        })(); 
     }
+
+    return {
+        init: readCachedProfilesToIndex,
+        getProfile: readProfileFromCache,
+        hasProfile: isProfileInCache,
+        saveProfile: saveProfileToCache
+    };
+})();
+
+app.get('/profile', function(req, res) {
+    var permalink = req.query.p;
+
+    if(!profileCache.hasProfile(permalink)) {
+        profileCache.saveProfile(permalink, function(profile) {
+            res.send(profile);
+        });
+        return;
+    }
+    var profile = profileCache.getProfile(permalink);
+    res.send(profile);
 });
 
 console.log('Loading data...');
 var server, companies, categories;
-if(!fs.existsSync('./data/comps')) {
-    fs.mkdirSync('./data/comps');
-}
+if(!fs.existsSync('./data/profiles')) fs.mkdirSync('./data/profiles');
+
 fs.readFile('data/companies_index.json', function(err, data) {
     if(err) throw err;
+
     companies = JSON.parse(data);
     categories = JSON.parse(fs.readFileSync('./data/categories.json'));
+    profileCache.init();
+    ranker.init();
     console.log(Object.keys(companies).length + ' indexed company profiles.');
+
     server = app.listen(3000, function () {
         var port = server.address().port;
         console.log('Listening at port', port);

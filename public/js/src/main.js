@@ -119,12 +119,42 @@ function pager(page) {
 	return <div className="pager row">{pageLinks}</div>
 }
 
+var SearchResultRelatedList = React.createClass({
+	getDefaultProps: function(){
+		return {
+			companies: []
+		};
+	},
+
+	render: function(){
+		var rows = [];
+		this.props.companies.forEach(function(company) {
+			rows.push(
+				<li className="row">
+					<div className="col company-item-img"><CompanyThumbnail maxSize="30" src={company.i} /></div>
+					<div className="col" className="company-name"><a href={'#' + company.p}>{company.n}</a></div>
+				</li>
+			);
+		});
+
+		return (
+			<div>
+				<h3 className="light">{'Related'}</h3>
+				<ul className="company-list">
+					{rows}
+				</ul>
+			</div>
+		);
+	}
+});
+
 var SearchResultList = React.createClass({
 	getInitialState: function() {
 		return {
 			companies: [],
-			currentPage: 1,
-			status: 'noquery'
+			related: [],
+			currentPage: null,
+			status: 'noquery',
 		}
 	},
 
@@ -135,8 +165,8 @@ var SearchResultList = React.createClass({
 	},
 
 	loadCompaniesFromServer: function(q) {
-		this.setState({status: 'loading'});
-		var queryUrl =  this.props.url + q;
+		this.setState({status: 'loading', currentPage: null});
+		var queryUrl =  this.props.url + encodeURIComponent(q);
 	    $.ajax({
 	      	url: queryUrl,
 	      	dataType: 'json',
@@ -144,7 +174,27 @@ var SearchResultList = React.createClass({
 	        	this.setState({companies: data, currentPage: 1, status: 'loaded'});
 	      	}.bind(this),
 	      	error: function(xhr, status, err) {
+	      		this.setState({companies: [], currentPage: 1, status: 'failed'});
 	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });		
+	},
+
+	loadRelatedFromServer: function() {
+		this.setState({related: []});
+		var data = this.getPage().companies;
+	    $.ajax({
+	      	url: '/related',
+	      	type: 'POST',
+	      	dataType: 'json',
+	      	data: JSON.stringify(data.map(function(c){ return c.p; })),
+	      	contentType: 'application/json',
+	      	success: function(data) {
+	        	this.setState({related: data});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	      		this.setState({related: []});
+	        	console.error('/related', status, err.toString());
 	      	}.bind(this)
 	    });		
 	},
@@ -167,11 +217,10 @@ var SearchResultList = React.createClass({
   	},
 
 	getPage: function() {
-	   	var start = this.props.pageSize * (this.state.currentPage - 1);
+	   	var start = this.props.pageSize * ((this.state.currentPage || 1) - 1);
 	    var end = start + this.props.pageSize;
-
 	    return {
-	      	currentPage: this.state.currentPage, 
+	      	currentPage: this.state.currentPage || 1, 
 	      	companies: this.state.companies.slice(start, end), 
 	      	numPages: this.getNumPages(), 
 	      	handleClick: function(pageNum) {
@@ -192,6 +241,12 @@ var SearchResultList = React.createClass({
 
 	handlePageChange: function(pageNum) {
 	    this.setState({currentPage: pageNum});
+	},
+
+	componentDidUpdate: function(nextProps, nextState) {
+		if(this.state.currentPage !== nextState.currentPage) {
+			this.loadRelatedFromServer();
+		}
 	},
 
     render: function() {
@@ -218,11 +273,21 @@ var SearchResultList = React.createClass({
         }
 
         return (
-        	<div className="list-wrapper">
-        		<div className="result-status">{resultStatus}</div>
-	        	<ul className="company-list">
-	        		{rows}
-	        	</ul>
+        	<div>
+        		<div className="row">
+		        	<div className="list-wrapper col">
+		        		<div className="result-status">{resultStatus}</div>
+			        	<ul className="company-list">
+			        		{rows}
+			        	</ul>
+				    </div>
+			        <div className="related-list col-right">
+			        {this.state.related.length > 0 ?
+		        		<SearchResultRelatedList companies={this.state.related} />
+		        		: null
+			        }
+			        </div>
+		        </div>
 	        	{pager(page)}
         	</div>
         );
@@ -264,6 +329,108 @@ var BounceSpinner = React.createClass({
 	}
 });
 
+function getMinPow10(x) {
+	var pow = 0;
+	while(Math.floor(x/=10)) {
+		pow++;
+	}
+	return pow;
+}
+
+
+function generateFundingGraph(el, data, width, height) {
+	var margin = {top: 30, right: 20, bottom: 30, left: 60},
+	    width = width - margin.left - margin.right,
+	    height = height - margin.top - margin.bottom;
+
+	// Parse the date / time
+	var parseDate = d3.time.format("%Y-%m-%d").parse;
+
+	// Set the ranges
+	var x = d3.time.scale().range([0, width]);
+	var y = d3.scale.linear().range([height, 0]);
+
+	// Define the axes
+	var xAxis = d3.svg.axis().scale(x)
+	    .orient("bottom").ticks(5);
+
+	var yAxis = d3.svg.axis().scale(y)
+	    .orient("left").ticks(5);
+
+	// Define the line
+	var line = d3.svg.line()
+	    .x(function(d) { return x(d.d); })
+	    .y(function(d) { return y(d.a); });
+	    
+	// Adds the svg canvas
+	var svg = d3.select(el).html('')
+	    .append("svg")
+	        .attr("width", width + margin.left + margin.right)
+	        .attr("height", height + margin.top + margin.bottom)
+	    .append("g")
+	        .attr("transform", 
+	              "translate(" + margin.left + "," + margin.top + ")");
+
+
+	var sumAmmounts = {};	
+	var minDate = parseDate(data.founded_on) || Number.POSITIVE_INFINITY, minAmount = Number.POSITIVE_INFINITY;
+	var fundingRounds =  data.funding_rounds;
+	fundingRounds.forEach(function(round) {
+		var roundDate = parseDate(round.d);
+		if(roundDate < minDate) {
+			minDate = roundDate;
+		}
+
+		if(!(roundDate.getUTCFullYear() in sumAmmounts)){
+			sumAmmounts[roundDate.getUTCFullYear()] = 0;
+		}
+		sumAmmounts[roundDate.getUTCFullYear()] += round.a;
+	});
+
+	
+	for(var year in sumAmmounts) {
+		if(sumAmmounts[year] < minAmount) {
+			minAmount = sumAmmounts[year];
+		}
+	}
+	var minAmountPow10 = getMinPow10(minAmount);
+	minAmountPow10 = Math.pow(10, minAmountPow10 - 2);
+
+	var inputData = [], maxDate = Number.NEGATIVE_INFINITY;
+	parseDate = d3.time.format("%Y").parse;
+	for(var year in sumAmmounts) {
+		var date = parseDate(year);
+		if(date > maxDate) {
+			maxDate = date;
+		}
+		inputData.push({d: date, a: sumAmmounts[year] / minAmountPow10})
+	}
+	inputData.sort(function(a, b) {
+		return a.d - b.d;
+	});
+    if(minDate < inputData[0].d) {
+    	inputData.unshift({d: minDate, a: 0});	
+    	minAmount = 0;
+    }
+    else {
+    	minDate = inputData[0].d;
+    }
+
+    //console.log(new Date(minDate.getUTCFullYear() - 1, 0), inputData[0].d, Math.min(parseDate(maxDate.getUTCFullYear() + 4 + ''), new Date()));
+    x.domain([new Date(minDate.getUTCFullYear() - 1, 0), Math.min(parseDate(maxDate.getUTCFullYear() + 4 + ''), new Date())]);
+    y.domain([minAmount/minAmountPow10, d3.max(inputData, function(d) { return d.a; })]);
+
+    svg.append("g").attr("class", "x axis").attr("transform", "translate(0," + height + ")").call(xAxis);
+    svg.append("g").attr("class", "y axis").call(yAxis);
+
+    svg.append("path").attr("class", "line").attr("d", line(inputData));
+
+    svg.selectAll(".dot")
+	  	.data(inputData).enter()
+	  	.append("circle").attr('cx', function(d) { return x(d.d); }).attr('cy', function(d) { return y(d.a); }).attr('r', 3).attr('fill', '#16a085');
+
+}
+
 var CompanyProfileSummary = React.createClass({
 	statuses: {
 		LOADING: 'loading',
@@ -284,7 +451,10 @@ var CompanyProfileSummary = React.createClass({
 	},
 
 	componentWillReceiveProps: function(nextProps) {
-		if(nextProps.profile !== null && this.props.profile !== nextProps.profile) {
+		if(nextProps.profile == null ){
+			this.setState({status: this.statuses.LOADING});
+		}
+		else if(!_.isEqual(this.props.profile, nextProps.profile)) {
 			this.setState({status: this.statuses.LOADED})
 		}
 	},
@@ -374,6 +544,104 @@ var CompanyProfileSummary = React.createClass({
 	}
 });
 
+var CompanyCondensedRow = React.createClass({
+	render: function(){
+		var maxThumbSize = 36;
+		return (
+            <li className="company-list-item row">
+            	<div className="company-item-img col">
+            		<CompanyThumbnail src={this.props.company.i} maxSize={maxThumbSize} alt={this.props.company.n} />
+            	</div>
+            	<div className="company-name col"><a href={'#' + this.props.company.p}>{this.props.company.n}</a></div>
+            </li>
+		);
+	}
+})
+
+var CompanyCondensedListing = React.createClass({
+	getDefaultProps: function(){
+		return {
+			companies: []
+		}
+	},
+
+	render: function() {
+		var companies = this.props.companies;
+		var rows = [];
+		for(var i = 0; i < Math.min(4, companies.length); i++) {
+			rows.push(<CompanyCondensedRow company={companies[i]} />);
+		}
+        return (
+        	<ul className="company-list company-list-condensed">
+        		{rows}
+        	</ul>
+        );
+	}
+});
+
+
+var CompanyCompetitors = React.createClass({
+	getInitialState: function() {
+		return {
+			competitors: { c: [] }
+		}
+	},
+
+	getDefaultProps: function(){
+		return {
+			permalink: null,
+			url: '/competitors?p='
+		}
+	},
+
+	loadCompetitorsFromServer: function(p) {
+		var queryUrl = this.props.url + p;
+	    $.ajax({
+	      	url: queryUrl,
+	      	dataType: 'json',
+	      	success: function(data) {
+	        	this.setState({competitors: data});
+	      	}.bind(this),
+	      	error: function(xhr, status, err) {
+	        	console.error(queryUrl, status, err.toString());
+	      	}.bind(this)
+	    });	
+	},
+
+	componentWillMount: function(){
+		if(this.props.permalink) {
+			this.setState({competitors: { c: [] }});
+			this.loadCompetitorsFromServer(this.props.permalink);
+		}
+	},
+
+	componentWillReceiveProps: function(nextProps){
+		console.log(nextProps);
+		if(this.props.permalink !== nextProps.permalink) {
+			this.setState({competitors: { c: [] }});
+			this.loadCompetitorsFromServer(this.props.permalink);
+		}
+	},
+
+	render: function(){
+		//console.log('COMPET: ', this.props, this.state.competitors.c);
+		return (
+			<div>
+				{ this.state.competitors.c.length > 0 ?
+				<div className="profile-section">
+					<div className="row section-title">
+						<h3 className="col">{'Competitors'}</h3>
+						<div className="col-right">{this.state.competitors.r}<span className="light">{'/' + this.state.competitors.t}</span> </div>
+					</div>
+					<CompanyCondensedListing companies={this.state.competitors.c} />
+				</div>
+				: null
+				}
+			</div>
+		);
+	}
+});
+
 var CompanyProfile = React.createClass({
 	getInitialState: function(){
 		return {
@@ -390,7 +658,7 @@ var CompanyProfile = React.createClass({
 		}
 	},
 
-	loadCompaniesFromServer: function(p) {
+	loadProfileFromServer: function(p) {
 		var queryUrl =  this.props.profileUrl + p;
 	    $.ajax({
 	      	url: queryUrl,
@@ -410,7 +678,7 @@ var CompanyProfile = React.createClass({
 	      	url: queryUrl,
 	      	dataType: 'json',
 	      	success: function(data) {
-	        	this.setState({meta: data, status: "loaded"});
+	        	this.setState({meta: data});
 	      	}.bind(this),
 	      	error: function(xhr, status, err) {
 	        	console.error(queryUrl, status, err.toString());
@@ -419,21 +687,26 @@ var CompanyProfile = React.createClass({
 	},
 
 	componentWillMount: function() {
-		this.setState({status: "loading"});
+		this.setState({status: "loading", profile: null});
 		this.loadMetaFromServer(this.props.permalink);
-		this.loadCompaniesFromServer(this.props.permalink);
+		this.loadProfileFromServer(this.props.permalink);
 	},
 
 	componentWillReceiveProps: function(nextprops) {
 		if(this.props.permalink !== nextprops.permalink) {
-			this.setState({status: "loading"});
+			this.setState({status: "loading", profile: null});
 			this.loadMetaFromServer(nextprops.permalink);
 			this.loadProfileFromServer(nextprops.permalink);
 		}
 	},
 
-	render: function(){
+	componentDidUpdate: function(){
+		if(this.state.profile && this.state.profile.funding_rounds.length > 0){
+			generateFundingGraph(this.refs.fundingGraph.getDOMNode(), this.state.profile, 500, 276);
+		}
+	},
 
+	render: function(){
 		return (
 			<div className="profile">
 				<div className="row">
@@ -444,6 +717,28 @@ var CompanyProfile = React.createClass({
 						<h2>{this.state.meta ? this.state.meta.n : null}</h2>
 						<div className="profile-desc">{this.state.profile ? this.state.profile.description : ''}</div>
 						<CompanyProfileSummary profile={this.state.profile} />
+						{ this.state.profile !== null ?
+						<div className="row">
+							<div className="col" style={{width: '550px'}}>
+							{this.state.profile.funding_rounds.length > 0 ?
+								<div className="profile-section" style={{width: '100%'}}>
+									<div className="row section-title">
+										<h3 className="col">{'Funding'}</h3>
+										{ this.state.profile.total_funding &&  this.state.profile.age ?
+										<div className="col-right">{numeral(Math.round(this.state.profile.total_funding/(this.state.profile.age - 6))).format('($ 0.00a)') + '/mo'}</div>
+										: null }
+									</div>
+									<div ref="fundingGraph"></div>	
+								</div>
+								: null
+							}
+							</div>
+							<div className="col-right" style={{width: '270px'}}>
+								<CompanyCompetitors permalink={this.props.permalink} />
+							</div>
+						</div>
+						: null
+						}				
 					</div>
 				</div>
 			</div>
@@ -484,17 +779,17 @@ var TrendView = React.createClass({
 
 	render: function(){
 		return (
-				<div className="trends">
-					<div className="trends-banner">
-						<h2>Investup simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities.</h2>
-						<div className="trends-stats">
-							{ this.state.stats ?
-								<h3>Indexed <span className="emph">{numberWithCommas(this.state.stats.indexed_count)}</span> company profiles across <span className="emph">{this.state.stats.cat_count}</span> categories.</h3>
-								: null
-							}
-						</div>
+			<div className="trends">
+				<div className="trends-banner">
+					<h2>Investup simplifies the process of gaining insight into the growth potential of a company by analyzing patterns and creating a model that predicts success in terms of investment opportunities.</h2>
+					<div className="trends-stats">
+						{ this.state.stats ?
+							<h3>Indexed <span className="emph">{numberWithCommas(this.state.stats.indexed_count)}</span> company profiles across <span className="emph">{this.state.stats.cat_count}</span> categories.</h3>
+							: null
+						}
 					</div>
 				</div>
+			</div>
 		);
 	}
 });
@@ -516,7 +811,7 @@ var App = React.createClass({
 
 	handleOnQuery: function(q) {
 		if(q.length >= 3) {
-			this.router.setRoute('/search/' + q);
+			this.router.setRoute('/search/' + encodeURIComponent(q));
 		}
 		else if(this.state.currPage !== AppPages.PROFILE){
 			this.router.setRoute('/');
@@ -531,7 +826,7 @@ var App = React.createClass({
 				setState({currPage: AppPages.HOME})
 			},
 			'/search/:query': function(query) {
-				setState({currPage: AppPages.SEARCH, query: query});
+				setState({currPage: AppPages.SEARCH, query: decodeURIComponent(query)});
 			},
 			'/:permalink': function(permalink) {
 				setState({currPage: AppPages.PROFILE, permalink: permalink, query: ''});
@@ -542,7 +837,6 @@ var App = React.createClass({
 
 	render: function() {
 		var content;
-		console.log('rendering', this.state.currPage);
 		if(this.state.currPage == AppPages.HOME) {
 			content =
 	            <TrendView/>;
