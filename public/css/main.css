@@ -378,7 +378,7 @@ ul.company-list {
 
 .page-link {
     color: #000;
-    font-weight:700;
+    font-weight:400;
     padding: 4px 7px;
     min-width: 27px;
     text-align:center;
@@ -488,6 +488,19 @@ ul.company-list {
     font-size: 13px;
 }
 
+.section-title .profile-label {
+    font-size: 12px;
+    line-height: 24px;
+}
+
+.profile-label .emph{
+    display: inlin-block;
+    font-size: 14px;
+    margin: 0 2px 0 6px;
+    color: #e74c3c;
+    font-weight: 700;
+}
+
 .profile-panel .col:last-child {
     border: none;
 }
@@ -511,6 +524,129 @@ ul.company-list {
     padding-bottom: 10px;
     margin-bottom: 10px;
 }
+
+.section-subtitle {
+    padding-bottom: 10px;
+    font-weight: 300;
+    color :#ccc;
+    font-size: 13px;
+}
+
+.profile-success-bar {
+    width: 220px;
+    height: 30px;
+    border-radius: 50px;
+    margin: 10px auto;
+    overflow: hidden;
+    position: relative;
+    background-color: #bdc3c7;
+    cursor: default;
+}
+
+.profile-success-fill, .profile-success-score{
+    height: 100%;
+    top:0; left:0;
+    position: absolute;
+    border-radius: 50px;
+}
+
+.profile-success-score{
+    width: 100%;
+    opacity: 0;
+    transition: all 0.2s linear;
+    font-size: 17px;
+    font-weight: 300;
+    color: #fff;
+    line-height: 30px;
+}
+
+.profile-success-bar:hover .profile-success-score{
+    opacity: 1;
+}
+
+.bad .profile-success-fill{
+    width: 25%;
+    background-color: #c0392b;
+}
+
+.ok .profile-success-fill{
+    width: 50%;
+    background-color: #2980b9;
+}
+
+.good .profile-success-fill{
+    width: 75%;
+    background-color: #27ae60;
+}
+
+.great .profile-success-fill{
+    width: 90%;
+    background-color: #16a085;
+}
+
+.awesome .profile-success-fill{
+    width: 100%;
+    background-color: #f1c40f;
+}
+
+.rising .profile-success-fill{
+    width: 60%;
+    background-color: #2ecc71;
+}
+
+.hot .profile-success-fill{
+    width: 80%;
+    background-color: #e67e22;
+}
+
+.very-hot .profile-success-fill{
+    width: 100%;
+    background-color: #e74c3c;
+}
+
+.tag {
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin: auto 15px;
+    text-transform: uppercase;
+    font-size: 13px;
+    color: #fff;
+}
+
+.tag-gray {
+    background-color: #ddd; 
+}
+
+.tag.rising {
+    background-color: #2ecc71;
+}
+
+.tag.hot {
+    background-color: #e67e22;
+}
+
+.tag.very-hot {
+    background-color: #e74c3c;
+}
+
+.rate {
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 300;
+    color: #16a085;
+}
+
+.rate .light{
+    margin-left: 5px;
+    font-weight: 300;
+    font-size: 16px;
+    color: #ccc;
+}
+
+.profile-title .tag {
+    margin-top: 35px;
+}
+
 
 .trends {
     margin-top:30px;
@@ -561,6 +697,73 @@ ul.company-list {
 .light {
     font-size: 0.85em;
     color: #888;
+}
+
+.ticker {
+    position: fixed;
+    bottom:0;
+    left:0;right:0;
+    height: 60px;
+    overflow: hidden;  
+}
+
+.ticker-tiles {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 2600px;
+    -webkit-animation: moveSlideshow 20s linear infinite;
+    -webkit-transform: translate3d(0, 0, 0);
+}
+
+@-webkit-keyframes moveSlideshow {
+    0%   { 
+        -webkit-transform: translateX(0);  
+    }    
+    100% { 
+        -webkit-transform: translateX(-2600px);  
+    }
+}
+
+.tile {
+    width: 200px;
+    padding: 5px;
+    box-sizing: border-box;
+    line-height: 50px;
+    text-align: center;
+}
+
+a.tile, a:link.tile, a:visited.tile {
+    font-size: 20px;
+    font-weight: 300;
+    color: #000;
+}
+
+a:hover.tile{
+    color: #e74c3c;
+}
+
+.tile-title {
+    font-weight: 400;
+    color:#e74c3c;
+    font-size: 16px;
+    text-transform: uppercase;
+}
+
+.tile-rank{
+    color:#aaa;
+    margin-right: 15px;
+}
+
+.tile-label {
+    width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: 5px;
+    text-align:left;
+    padding-left:5px;
 }
 
 

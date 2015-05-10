@@ -372,8 +372,9 @@ function generateFundingGraph(el, data, width, height) {
 	              "translate(" + margin.left + "," + margin.top + ")");
 
 
-	var sumAmmounts = {};	
-	var minDate = parseDate(data.founded_on) || Number.POSITIVE_INFINITY, minAmount = Number.POSITIVE_INFINITY;
+	var sumAmmounts = {};
+	var foundedDate = parseDate(data.founded_on);
+	var minDate = foundedDate || Number.POSITIVE_INFINITY, minAmount = Number.POSITIVE_INFINITY;
 	var fundingRounds =  data.funding_rounds;
 	fundingRounds.forEach(function(round) {
 		var roundDate = parseDate(round.d);
@@ -428,6 +429,11 @@ function generateFundingGraph(el, data, width, height) {
     svg.selectAll(".dot")
 	  	.data(inputData).enter()
 	  	.append("circle").attr('cx', function(d) { return x(d.d); }).attr('cy', function(d) { return y(d.a); }).attr('r', 3).attr('fill', '#16a085');
+
+	if(foundedDate){
+		console.log('founded');
+		svg.append('circle').attr('cx', x(foundedDate)).attr('cy', y(minAmount/minAmountPow10) ).attr('r', 4).attr('fill', '#f1c40f');		
+	}
 
 }
 
@@ -502,14 +508,18 @@ var CompanyProfileSummary = React.createClass({
 
 		}
 
+		var scoreClass = getSuccessClass(this.props.profile);
 		return (
 			<div className={"profile-summary " + this.state.status}>
 				{ this.props.profile ?
-					<div className="profile-summary-content">
+					<div className={"profile-summary-content " + scoreClass.s}>
 						<div className="profile-panel row">
 							<div className="col">
 								<div className="profile-label">{"Success score"}</div>
-								<div>{Math.round(this.props.profile.success.all * 2250) || <span className="light">{"n/a"}</span>}</div>
+								<div className="profile-success-bar">
+									<div className="profile-success-fill"></div>
+									<div className="profile-success-score">{Math.round(this.props.profile.success.all * 2250) || <span className="light">{"n/a"}</span>}</div>
+								</div>
 							</div>
 							
 							{ !this.props.profile.total_funding || this.props.profile.total_funding == 0 ?
@@ -631,7 +641,7 @@ var CompanyCompetitors = React.createClass({
 				<div className="profile-section">
 					<div className="row section-title">
 						<h3 className="col">{'Competitors'}</h3>
-						<div className="col-right">{this.state.competitors.r}<span className="light">{'/' + this.state.competitors.t}</span> </div>
+						<div className="col-right profile-label">{'Rank  '}<span className="emph">{this.state.competitors.r}</span>{'/' + this.state.competitors.t}</div>
 					</div>
 					<CompanyCondensedListing companies={this.state.competitors.c} />
 				</div>
@@ -641,6 +651,61 @@ var CompanyCompetitors = React.createClass({
 		);
 	}
 });
+
+function getSuccessClass(profile) {
+	if(!profile) return null;
+	var score = profile.success.all;
+	var stdDivider = 3;
+	if(profile.is_acquired || profile.num_acquisitions > 0) {
+		if(score < 0.1) {
+			return {s: 'bad' };
+		}
+		else if(score >= 0.1 && score < 0.5) {
+			return {s: 'ok' };
+		}
+		else if(score >= 0.5 && score < 0.75) {
+			return {s: 'good'};
+		}
+		else if(score >= 0.75 && score < 0.85) {
+			return {s: 'great'};
+		}
+		else {
+			return {s: 'awesome'};
+		}
+	}
+	else {
+		console.log(profile, profile.is_acquired);
+		if(profile.age < 42) {
+			if(score < 0.15) {
+				if(profile.rate < -stdDivider) return {s: 'ok', c: 'incubated'};
+				else if(profile.rate >= -stdDivider && profile.rate < stdDivider) return {s: 'rising'};
+				else return {s: 'hot'};
+			}
+			else {
+				if(profile.rate < -stdDivider) return {s: 'rising', c: 'needs-funding'};
+				else if(profile.rate >= -stdDivider && profile.rate < stdDivider) return {s: 'hot'};
+				else return {s: 'very-hot'};			
+			}
+		}
+		else {
+			if(score < 0.15) {
+				if(profile.rate < -stdDivider) return {s: 'ok'};
+				else if(profile.rate >= -stdDivider && profile.rate < stdDivider) return {s: 'ok'};
+				else return {s: 'rising'};
+			}
+			else if(score >= 0.15 && score < 0.5) {
+				if(profile.rate < -stdDivider) return {s: 'ok'};
+				else if(profile.rate >= -stdDivider && profile.rate < stdDivider) return {s: 'rising'};
+				else return {s: 'hot'};			
+			}
+			else {
+				if(profile.rate < -stdDivider) return {s: 'rising'};
+					else if(profile.rate >= -stdDivider && profile.rate < stdDivider) return {s: 'hot'};
+					else return {s: 'very-hot'};					
+			}	
+		}
+	}
+}
 
 var CompanyProfile = React.createClass({
 	getInitialState: function(){
@@ -707,6 +772,19 @@ var CompanyProfile = React.createClass({
 	},
 
 	render: function(){
+		var successClass = getSuccessClass(this.state.profile);
+		var tags = [];
+		if(this.state.profile) {
+			if(this.state.profile.is_acquired) {
+				tags.push(<div className="col tag tag-gray">{'Acquired'}</div>);	
+			}
+			else if(this.state.profile.num_acquisitions === 0 && successClass) {
+				tags.push(<div className={"col tag " + successClass.s}>{successClass.s.split('-').join(' ')}</div>);
+			}
+			else if(successClass.c) {
+				tags.push(<div className={"col tag " + successClass.c}>{successClass.c.split('-').join(' ')}</div>);	
+			}
+		}
 		return (
 			<div className="profile">
 				<div className="row">
@@ -714,7 +792,10 @@ var CompanyProfile = React.createClass({
 						<CompanyThumbnail src={this.state.meta ? this.state.meta.i : null} alt={this.state.meta ? this.state.meta.n : null} maxSize={110} alignTop={true} />
 					</div>
 					<div className="col profile-content">
-						<h2>{this.state.meta ? this.state.meta.n : null}</h2>
+						<div className="row profile-title">
+							<h2 className="col">{this.state.meta ? this.state.meta.n : null}</h2>
+							{tags}
+						</div>
 						<div className="profile-desc">{this.state.profile ? this.state.profile.description : ''}</div>
 						<CompanyProfileSummary profile={this.state.profile} />
 						{ this.state.profile !== null ?
@@ -725,9 +806,12 @@ var CompanyProfile = React.createClass({
 									<div className="row section-title">
 										<h3 className="col">{'Funding'}</h3>
 										{ this.state.profile.total_funding &&  this.state.profile.age ?
-										<div className="col-right">{numeral(Math.round(this.state.profile.total_funding/(this.state.profile.age - 6))).format('($ 0.00a)') + '/mo'}</div>
+										<div className='col-right row'>
+											<div className='col rate'>{numeral(Math.round(this.state.profile.total_funding/(this.state.profile.age - 6))).format('($ 0.00a)')}<span className="light">{'/mo'}</span></div>
+										</div>
 										: null }
 									</div>
+									<div className="section-subtitle">{'Sum of money raised per year'}</div>
 									<div ref="fundingGraph"></div>	
 								</div>
 								: null
@@ -745,6 +829,37 @@ var CompanyProfile = React.createClass({
 		);
 	}
 });
+
+/*var TickerView = React.createClass({
+	getDefaultProps: function() {
+		return {
+			companies: [],
+			title: ''
+		}
+	},
+
+	render: function(){
+		var tiles = [];
+		this.props.companies.forEach(function(company, i) {
+			if(i % 5 === 0 && this.props.title.length > 0) {
+				tiles.push(<div className="tile tile-title col">{this.props.title}</div>);
+			}
+			tiles.push(
+				<a className="tile row col" href={'#' + company.p}>
+					<div className="tile-img col"><CompanyThumbnail src={company.i} maxSize={50} /></div>
+					<div className="tile-label col">{company.n}</div>
+				</a>
+			);
+		}.bind(this));
+		return (
+			<div className="ticker" style={this.props.style}>
+				<div className="ticker-tiles row">
+					{tiles}
+				</div>
+			</div>
+		);
+	}
+});*/
 
 var TrendView = React.createClass({
 	getInitialState: function() {
@@ -789,6 +904,7 @@ var TrendView = React.createClass({
 						}
 					</div>
 				</div>
+
 			</div>
 		);
 	}

@@ -10,6 +10,10 @@ var profileFeatures = {
 		return d.properties.short_description;
 	},
 
+	is_acquired: function(d) {
+		return d.relationships.acquired_by && d.relationships.acquired_by.items.length > 0;
+	},
+
 	total_funding: function(d) {
 		return d.properties.total_funding_usd;
 	},

@@ -15,8 +15,66 @@ app.get('/', function (req, res) {
     res.render('index');
 });
 
+
+var tickerRaters = (function(){
+    return {
+        isAllStar: function(profile){
+            return (profile.is_acquired || profile.num_acquisitions > 0) && profile.success.all >= 0.85;
+        },
+
+        isHot: function(profile) {
+            var stdDivider = 3;
+            if(!(profile.is_acquired || profile.num_acquisitions > 0)){
+                if(profile.age < 42) {
+                    if(profile.success.all < 0.15) {
+                        if(profile.rate >= stdDivider) return true;
+                    }
+                    else {
+                        if(profile.rate >= -stdDivider) return true;
+                    }
+                }
+                else {
+                    if(profile.success.all >= 0.15 && profile.success.all < 0.5){
+                        if(profile.rate >= stdDivider) return true;
+                    }
+                    else if(profile.success.all >= 0.5){
+                        if(profile.rate >= -stdDivider) return true;    
+                    }
+                }
+            }
+            return false;
+        }
+    };
+})();
+
 app.get('/stats', function(req,res){
+    var trend_allstar = [], trend_hot = [];
+    profileCache.savedProfiles().forEach(function(p){
+        var profile = profileCache.getProfile(p);
+        var meta = companies[p];
+        meta.p = p;
+        meta.s = profile.success.all;
+        if(tickerRaters.isAllStar(profile)) {
+            trend_allstar.push(meta);
+        }
+        if(tickerRaters.isHot(profile)) {
+            trend_hot.push(meta);
+        }
+    });
+
+    trend_allstar.sort(function(a,b){
+        return b.s - a.s;
+    });
+    trend_hot.sort(function(a,b){
+        return b.s - a.s;
+    });
+
+    console.log(trend_allstar, trend_hot);
     res.send({
+        trends: {
+            allstar: trend_allstar,
+            hot: trend_hot
+        },
         indexed_count: Object.keys(companies).length,
         cat_count: Object.keys(categories).length
     });
@@ -374,7 +432,7 @@ var profileCache = (function() {
                 try{
                     var orgData = JSON.parse(data);
                     profileData = utils.getOrganizationProfileFromData(orgData);
-                    profileData.success = calcSuccessScores(permalink, orgData);
+                    profileData.success = calcSuccessScores(permalink, orgData);             
                     fs.writeFile(PROFILE_DIR + permalink + ".json", JSON.stringify(profileData), function(err) {
                         if(err){
                             console.error(err.message);
@@ -398,19 +456,35 @@ var profileCache = (function() {
         })(); 
     }
 
+    function savedProfiles(){
+        return Object.keys(profiles);
+    }
+
     return {
         init: readCachedProfilesToIndex,
         getProfile: readProfileFromCache,
         hasProfile: isProfileInCache,
-        saveProfile: saveProfileToCache
+        saveProfile: saveProfileToCache,
+        savedProfiles: savedProfiles
     };
 })();
+
+function getRateFromProfile(profile, avg) {
+    var offsettedAge = Math.max(profile.age - 6, 1);
+    var diff = profile.total_funding/offsettedAge - avg.r;
+    return Math.round(diff / avg.d);    
+}
 
 app.get('/profile', function(req, res) {
     var permalink = req.query.p;
 
     if(!profileCache.hasProfile(permalink)) {
         profileCache.saveProfile(permalink, function(profile) {
+            if(profile.total_funding && profile.age){
+                var category = companies[permalink].c[companies[permalink].c.length - 1];
+                var categoryInfo = categories[category];
+                profile.rate = getRateFromProfile(profile, categoryInfo);
+            }
             res.send(profile);
         });
         return;
@@ -427,7 +501,7 @@ fs.readFile('data/companies_index.json', function(err, data) {
     if(err) throw err;
 
     companies = JSON.parse(data);
-    categories = JSON.parse(fs.readFileSync('./data/categories.json'));
+    categories = JSON.parse(fs.readFileSync('./data/categories_freq.json'));
     profileCache.init();
     ranker.init();
     console.log(Object.keys(companies).length + ' indexed company profiles.');
