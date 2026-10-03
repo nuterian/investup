@@ -36,7 +36,18 @@ uv run investup stats      # yearly coverage summary
 uv run investup backtest   # walk-forward backtest -> docs/backtests/<label>.md
 uv run investup score      # rank today's private companies, with reasons
 uv run investup digest     # recent filers ranked by bigger-round and IPO odds -> docs/digests/
+uv run investup export     # JSON files for the static site -> site/public/data/
 ```
+
+### The site
+
+[`site/`](site/) is a static Vite + React + TypeScript app over the exported files: a
+dashboard, company pages, a screener and a methodology page. See
+[`site/README.md`](site/README.md) and [`docs/FRONTEND_PLAN.md`](docs/FRONTEND_PLAN.md).
+The [`Site` workflow](.github/workflows/site.yml) rebuilds the data monthly and deploys to
+GitHub Pages. To turn it on:
+1. Add a repository secret `INVESTUP_USER_AGENT`, e.g. `Your Name you@example.com`.
+2. Set Settings → Pages → Source to "GitHub Actions".
 
 The downloader finds each quarter's ZIP by reading the SEC's
 [Form D data sets page](https://www.sec.gov/data-research/sec-markets-data/form-d-data-sets).
@@ -81,6 +92,12 @@ most (from SHAP contributions).
 [`docs/digests/2026-06-30.md`](docs/digests/2026-06-30.md) is a sample digest. It covers
 the 2,200 companies that filed in Q2 2026, ranked by bigger-round odds, with an IPO
 watch and the biggest raises (e.g. Baseten, Saronic, Ramp, Shield AI).
+
+**What the site shows:** raw model probabilities are over-confident at the very top,
+mostly because outcome rates swing between market regimes (for example the 2020–21 IPO
+window vs 2022–23). So each company is shown with its **rank** and the **historical hit
+rate of that rank band** in the backtests. For example, 42.6% of companies ranked in the
+top 0.1% for IPO odds went public within 36 months, vs 0.8% overall.
 
 **Known limitations:**
 - Acquisitions aren't tracked yet, so a company that was bought can still show up.

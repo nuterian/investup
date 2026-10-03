@@ -382,11 +382,20 @@ baselines.
       round so far, within 18 months. Base rate about 5%; now the default label.
 - [x] `investup digest`: recent filers ranked by bigger-round and IPO odds, with reasons
       (sample in `docs/digests/`)
-- [x] Calibration tables in the backtest reports
+- [x] Calibration tables in the backtest reports. They showed the top 1% is
+      over-confident. A held-out Platt correction made it worse (regime shift), so it was
+      removed. The site shows historical hit rates by rank band instead, made monotone
+      in the export.
+- [x] `investup export` for the static site: summary, scored universe, lists (including
+      quarter-over-quarter movers, repeat founders and new S-1 filers), search index and
+      1,024 company-detail shards
 - [ ] Acquisition tracking. The only reachable host is www.sec.gov; acquirer 8-K text
       search lives on efts.sec.gov, and Wikidata isn't reachable from the environment.
-- [ ] Phase 4 product: API and TypeScript frontend (needs registry.npmjs.org in the
-      environment's allowed domains)
+- [x] Static site source (`site/`): dashboard, company page, screener with CSV export,
+      methodology page, plus the GitHub Pages workflow. No API server; see
+      `docs/FRONTEND_PLAN.md`.
+- [ ] Install, type-check, test and build the site, then enable Pages (needs
+      registry.npmjs.org reachable from the build environment)
 - [ ] Form C as its own funding source, entity resolution across renamed CIKs,
       data-quality report
 
