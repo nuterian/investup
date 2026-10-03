@@ -5,7 +5,7 @@ import datetime as dt
 import pytest
 
 from conftest import OFFERING_COLS, filing, write_quarter_zip
-from investup import ledger
+from investup import ledger, sec
 from investup.formd import download, load
 from investup.formd.schema import SchemaError
 
@@ -113,23 +113,23 @@ def test_missing_required_column_fails_loudly(con, tmp_path):
 
 
 def test_quarter_helpers():
-    assert download.parse_quarter("2015Q3") == (2015, 3)
+    assert sec.parse_quarter("2015Q3") == (2015, 3)
     with pytest.raises(ValueError):
-        download.parse_quarter("2015-3")
-    assert download.quarter_range((2015, 3), (2016, 2)) == [
+        sec.parse_quarter("2015-3")
+    assert sec.quarter_range((2015, 3), (2016, 2)) == [
         (2015, 3),
         (2015, 4),
         (2016, 1),
         (2016, 2),
     ]
-    assert download.last_complete_quarter(dt.date(2026, 10, 3)) == (2026, 3)
-    assert download.last_complete_quarter(dt.date(2026, 2, 1)) == (2025, 4)
+    assert sec.last_complete_quarter(dt.date(2026, 10, 3)) == (2026, 3)
+    assert sec.last_complete_quarter(dt.date(2026, 2, 1)) == (2025, 4)
 
 
 def test_download_requires_contact_user_agent(monkeypatch):
     monkeypatch.delenv("INVESTUP_USER_AGENT", raising=False)
     with pytest.raises(RuntimeError, match="INVESTUP_USER_AGENT"):
-        download.user_agent()
+        sec.user_agent()
 
 
 def test_parse_index_handles_mixed_paths_and_suffixes():

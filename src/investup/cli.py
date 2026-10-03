@@ -7,11 +7,12 @@ from pathlib import Path
 
 import duckdb
 
-from investup import ledger
+from investup import edgar, ledger, sec
 from investup.formd import download, load
 
 DEFAULT_DB = Path("data/investup.duckdb")
-DEFAULT_RAW = Path("data/raw/formd")
+DEFAULT_RAW = Path("data/raw")
+SOURCES = ("formd", "edgar")
 
 
 def _connect(path: Path) -> duckdb.DuckDBPyConnection:
@@ -20,14 +21,20 @@ def _connect(path: Path) -> duckdb.DuckDBPyConnection:
 
 
 def cmd_download(args: argparse.Namespace) -> None:
-    start = download.parse_quarter(args.start)
-    end = download.parse_quarter(args.end) if args.end else download.last_complete_quarter()
-    download.download_range(start, end, args.dest, force=args.force)
+    start = sec.parse_quarter(args.start)
+    end = sec.parse_quarter(args.end) if args.end else sec.last_complete_quarter()
+    if args.source in ("formd", "all"):
+        download.download_range(start, end, args.raw / "formd", force=args.force)
+    if args.source in ("edgar", "all"):
+        edgar.download_range(start, end, args.raw / "edgar", force=args.force)
 
 
 def cmd_load(args: argparse.Namespace) -> None:
     con = _connect(args.db)
-    load.load_dir(con, args.src)
+    if args.source in ("formd", "all"):
+        load.load_dir(con, args.raw / "formd")
+    if args.source in ("edgar", "all"):
+        edgar.load_dir(con, args.raw / "edgar")
     ledger.build(con)
 
 
@@ -49,15 +56,17 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="investup")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("download", help="Download SEC Form D quarterly data sets")
+    p = sub.add_parser("download", help="Download Form D data sets and EDGAR indexes")
+    p.add_argument("--source", choices=(*SOURCES, "all"), default="all")
     p.add_argument("--start", default="2008q1", help="First quarter, e.g. 2015q1")
     p.add_argument("--end", help="Last quarter (default: last complete quarter)")
-    p.add_argument("--dest", type=Path, default=DEFAULT_RAW)
+    p.add_argument("--raw", type=Path, default=DEFAULT_RAW, help="Download directory")
     p.add_argument("--force", action="store_true", help="Re-download existing files")
     p.set_defaults(func=cmd_download)
 
-    p = sub.add_parser("load", help="Load downloaded ZIPs into DuckDB and build the ledger")
-    p.add_argument("--src", type=Path, default=DEFAULT_RAW)
+    p = sub.add_parser("load", help="Load downloaded files into DuckDB and build the ledger")
+    p.add_argument("--source", choices=(*SOURCES, "all"), default="all")
+    p.add_argument("--raw", type=Path, default=DEFAULT_RAW, help="Download directory")
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
     p.set_defaults(func=cmd_load)
 
