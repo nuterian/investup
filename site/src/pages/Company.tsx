@@ -257,6 +257,7 @@ function CompanyView({
       {scored && <Peers c={scored} universe={universe} />}
 
       <Card title="Form D filings">
+        <div className="table-scroll">
         <table className="table">
           <thead>
             <tr>
@@ -281,6 +282,7 @@ function CompanyView({
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

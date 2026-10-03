@@ -33,6 +33,7 @@ export interface Summary {
   sectors: { sector: string; last_12m: number; prior_12m: number; money_12m: number }[];
   states: { state: string; companies: number; money: number }[];
   track_record: Partial<Record<"step_up" | "went_public" | "next_round", TrackRecord>>;
+  shards?: number;
 }
 
 export interface Company {
@@ -145,12 +146,13 @@ export function loadSearch(): Promise<SearchEntry[]> {
   return searchIndex;
 }
 
-export function shardOf(cik: number): string {
-  return (cik % 1024).toString(16).padStart(3, "0");
+export function shardOf(cik: number, shards = 1024): string {
+  return (cik % shards).toString(16).padStart(3, "0");
 }
 
 export async function loadDetail(cik: number): Promise<Detail | null> {
-  const shard = await load<Record<string, Detail>>(`c/${shardOf(cik)}.json`);
+  const { shards } = await loadSummary();
+  const shard = await load<Record<string, Detail>>(`c/${shardOf(cik, shards ?? 1024)}.json`);
   return shard[String(cik)] ?? null;
 }
 

@@ -41,6 +41,13 @@ uv run investup export     # JSON files for the static site -> site/public/data/
 
 ### The site
 
+To run it locally in one step (the first run takes about 20 minutes to fetch and score the
+data, later runs start in seconds):
+
+```bash
+INVESTUP_USER_AGENT="Your Name you@example.com" ./scripts/dev.sh
+```
+
 [`site/`](site/) is a static Vite + React + TypeScript app over the exported files: a
 dashboard, company pages, a screener and a methodology page. See
 [`site/README.md`](site/README.md) and [`docs/FRONTEND_PLAN.md`](docs/FRONTEND_PLAN.md).

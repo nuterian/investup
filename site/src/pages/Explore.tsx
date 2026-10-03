@@ -17,6 +17,8 @@ interface Filters {
 }
 
 const MIN_OPTIONS = [0, 1e6, 5e6, 20e6, 100e6];
+// Sandboxed previews (e.g. a claude.ai artifact) block downloads.
+const CAN_DOWNLOAD = !import.meta.env.VITE_NO_DOWNLOAD;
 const WITHIN_OPTIONS = [0, 6, 12, 24];
 
 function readFilters(params: URLSearchParams): Filters {
@@ -161,10 +163,15 @@ function Screener({
         </select>
       </div>
       <p className="muted small">
-        {rows.length.toLocaleString()} companies ·{" "}
-        <button type="button" className="link" onClick={() => download(rows)}>
-          Download CSV
-        </button>
+        {rows.length.toLocaleString()} companies
+        {CAN_DOWNLOAD && (
+          <>
+            {" · "}
+            <button type="button" className="link" onClick={() => download(rows)}>
+              Download CSV
+            </button>
+          </>
+        )}
       </p>
       <div className="table-wrap">
         <table className="table">

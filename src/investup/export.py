@@ -10,8 +10,8 @@ Writes into ``out``:
 * ``search.json``: name index of every operating company that raised since
   ``details_since``.
 * ``c/<xxx>.json``: company detail (funding timeline, facts, people and their
-  other companies), split into 1,024 shards by ``cik % 1024`` (about 13 KB
-  gzipped each).
+  other companies), split into ``shards`` files by ``cik % shards`` (default
+  1,024, about 13 KB gzipped each). The count is written to ``summary.json``.
 """
 
 from __future__ import annotations
@@ -352,7 +352,9 @@ def search_rows(con: duckdb.DuckDBPyConnection, since: dt.date) -> list[tuple]:
     return [(cik, _name(n), s, y) for cik, n, s, y in rows]
 
 
-def detail_shards(con: duckdb.DuckDBPyConnection, since: dt.date, end: dt.date) -> dict:
+def detail_shards(
+    con: duckdb.DuckDBPyConnection, since: dt.date, end: dt.date, shards: int = SHARDS
+) -> dict:
     con.execute(
         """
         CREATE OR REPLACE TEMP TABLE x_ciks AS
@@ -472,10 +474,10 @@ def detail_shards(con: duckdb.DuckDBPyConnection, since: dt.date, end: dt.date) 
             }
         )
 
-    shards: dict[str, dict] = defaultdict(dict)
+    out: dict[str, dict] = defaultdict(dict)
     for cik, d in details.items():
-        shards[f"{cik % SHARDS:03x}"][str(cik)] = d
-    return shards
+        out[f"{cik % shards:03x}"][str(cik)] = d
+    return out
 
 
 def export(
@@ -486,6 +488,7 @@ def export(
     top: int = 25,
     details_since: dt.date = dt.date(2019, 1, 1),
     backtests: Path = Path("docs/backtests"),
+    shards: int = SHARDS,
 ) -> dict[str, int]:
     """Write all site data files. Returns bytes written per file group."""
     meta = score(con, model=model)
@@ -500,6 +503,7 @@ def export(
     sizes["lists.json"] = _write(out / "lists.json", lists)
 
     summary = build_summary(con, end, prev, meta["model"], backtests)
+    summary["shards"] = shards
     sizes["summary.json"] = _write(out / "summary.json", summary)
 
     search = search_rows(con, details_since)
@@ -507,6 +511,6 @@ def export(
         out / "search.json", _columnar(["cik", "name", "state", "last_year"], search)
     )
 
-    shards = detail_shards(con, details_since, end)
-    sizes["c/*.json"] = sum(_write(out / "c" / f"{k}.json", v) for k, v in shards.items())
+    detail = detail_shards(con, details_since, end, shards)
+    sizes["c/*.json"] = sum(_write(out / "c" / f"{k}.json", v) for k, v in detail.items())
     return sizes

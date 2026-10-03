@@ -39,6 +39,7 @@ describe("data", () => {
     ]);
     expect(shardOf(1001)).toBe("3e9");
     expect(shardOf(1024)).toBe("000");
+    expect(shardOf(1001, 256)).toBe("0e9");
   });
 });
 

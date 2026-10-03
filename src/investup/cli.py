@@ -93,7 +93,7 @@ def cmd_digest(args: argparse.Namespace) -> None:
 
 def cmd_export(args: argparse.Namespace) -> None:
     con = _connect(args.db)
-    sizes = export.export(con, args.out, model=args.model)
+    sizes = export.export(con, args.out, model=args.model, shards=args.shards)
     for name, size in sizes.items():
         print(f"{name:<14} {size / 1e6:8.2f} MB")
     print(f"\nSite data written to {args.out}")
@@ -147,6 +147,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
     p.add_argument("--out", type=Path, default=Path("site/public/data"))
     p.add_argument("--model", choices=("gbm", "cell"), help="Default: gbm if installed")
+    p.add_argument("--shards", type=int, default=export.SHARDS, help="Company detail files")
     p.set_defaults(func=cmd_export)
 
     args = parser.parse_args(argv)

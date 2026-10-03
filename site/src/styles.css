@@ -13,7 +13,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0c0a09;
     --surface: #171412;
     --text: #f5f5f4;
@@ -25,6 +25,19 @@
     --down: #f87171;
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0c0a09;
+  --surface: #171412;
+  --text: #f5f5f4;
+  --muted: #a8a29e;
+  --line: #292524;
+  --accent: #60a5fa;
+  --accent-soft: #172036;
+  --up: #4ade80;
+  --down: #f87171;
+  color-scheme: dark;
 }
 
 * {
@@ -77,7 +90,7 @@ h2 {
 /* Layout */
 .top {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   z-index: 10;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -425,6 +438,9 @@ nav a.active {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+.table-scroll {
+  overflow-x: auto;
 }
 .table {
   width: 100%;
