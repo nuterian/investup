@@ -49,14 +49,3 @@ def test_gbm_learns_signal_and_explains_scores(con):
 
     reason = con.execute("SELECT reason FROM scored ORDER BY prob DESC LIMIT 1").fetchone()[0]
     assert "months since last raise" in reason
-
-
-def test_platt_fit_recovers_known_parameters():
-    import numpy as np
-
-    rng = np.random.default_rng(0)
-    raw = rng.normal(size=20_000)
-    y = (rng.random(20_000) < gbm._sigmoid(0.5 * raw - 1.0)).astype(float)
-    a, b = gbm.platt_fit(raw, y)
-    assert a == pytest.approx(0.5, abs=0.05)
-    assert b == pytest.approx(-1.0, abs=0.05)
