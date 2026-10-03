@@ -2,3 +2,13 @@
 /public/js/build/.module-cache
 /data/companies
 /data/software
+
+# Python pipeline
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+/data/raw/
+/data/*.duckdb
+/data/*.duckdb.wal

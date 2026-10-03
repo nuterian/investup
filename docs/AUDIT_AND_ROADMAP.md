@@ -183,14 +183,14 @@ An individual or open project can stand out in four ways:
 3. **Honest, published backtests.** "If you'd followed our top-50 list in 2019, here's what
    happened."
 4. **An open dataset as a by-product.** A clean, CC0/OGL "private funding ledger"
-   (Form D + Companies House) is useful in its own right and builds credibility and traffic.
+   (Form D first, Companies House later) is useful in its own right and builds credibility and traffic.
 
 ---
 
 ## 4. Product vision
 
 > **Investup: an open early-signal engine for private companies.**
-> It tracks every company that files a private raise in the US or UK, shows how fast each one
+> It tracks every company that files a private raise with the SEC, shows how fast each one
 > is moving compared with its peers, and estimates the chance it raises again or fails in the
 > next 18 months. Every number comes with the reasons behind it.
 
@@ -201,7 +201,7 @@ An individual or open project can stand out in four ways:
 
 **Core jobs:**
 
-1. **Discover:** "Show me Series-A-stage climate-hardware companies in the UK whose momentum
+1. **Discover:** "Show me Series-A-stage climate-hardware companies in Texas whose momentum
    jumped this quarter."
 2. **Evaluate:** a company page with a funding timeline, peer percentile, calibrated
    probabilities and the top drivers behind them.
@@ -213,8 +213,8 @@ An individual or open project can stand out in four ways:
 
 - [ ] **Revoke the Crunchbase key** in the Crunchbase account, then remove it from code. Load
   secrets from environment variables.
-- [ ] Tag the current state as `v0-2015-classproject`, then move the old app into `legacy/` or
-  delete it.
+- [ ] Tag the current state as `v0-2015-classproject` (commit `ebc039f`), then delete the old
+  app.
 - [ ] Remove Crunchbase-derived data (`data/companies_index.json`, `data/trees/`) from the
   default branch. That data can't be redistributed.
 - [ ] Add a LICENSE (e.g. MIT for code, CC0/OGL notes for data) and fix `package.json`
@@ -231,12 +231,11 @@ An individual or open project can stand out in four ways:
   - Scheduled pipelines through GitHub Actions or cron.
 - **Ingestors:**
   1. SEC Form D quarterly sets (2008–present), parsed into issuers, offerings, amendments and
-     related persons.
+     related persons. *(started)*
   2. SEC Form C.
-  3. Companies House: company profiles, SH01 allotments and dissolutions. Start with sectors
-     identified by SIC codes, since SH01 filings come per company.
-  4. EDGAR S-1/424B and 8-K exits.
-  5. Wikidata for exits and parent companies.
+  3. EDGAR S-1/424B and 8-K exits.
+  4. Wikidata for exits and parent companies.
+  5. *(Deferred to Phase 5: UK Companies House.)*
 - **Entity resolution:** CIK or company number as the primary key, plus normalized name, state
   and executive overlap, and the domain once we have it. Store match confidence.
 - **Bitemporal tables:** every fact gets both `event_date` and `known_at` (filing date). This
@@ -251,8 +250,9 @@ An individual or open project can stand out in four ways:
 baselines.
 
 - **Labels**, all observable from filings, at a fixed 18-month horizon from snapshot date *t*:
-  - **Raise again:** a new Form D or amendment with a higher amount sold, or a new SH01.
-  - **Fail:** dissolved, or no filings for a long period.
+  - **Raise again:** a new Form D or amendment with a higher amount sold.
+  - **Fail:** no filings for a long period, or a state-level dissolution where available.
+    US failure labels are weaker than the UK's, which is a known limitation.
   - **Exit:** IPO filing or 8-K acquisition, when available.
 - **Features as of *t* only:**
   - age;
@@ -282,7 +282,7 @@ baselines.
 
 **Goal:** time-series signals that are known to lead funding.
 
-- Resolve domains for active companies using Form D, Companies House, Wikidata and search.
+- Resolve domains for active companies using Form D, Wikidata and search.
 - Take weekly snapshots of:
   - open roles from Greenhouse, Lever and Ashby (hiring velocity);
   - GitHub org activity (GH Archive);
@@ -298,7 +298,7 @@ baselines.
 - **Backend:** FastAPI over DuckDB, with search (DuckDB FTS, or Meilisearch if needed),
   company, peers, screener and watchlist endpoints.
 - **Frontend:** a modern TypeScript SPA (React + Vite, or Next.js) that keeps the good 2015
-  ideas: search, company page, funding timeline chart, peer rank ("#3 of 41 in UK fintech,
+  ideas: search, company page, funding timeline chart, peer rank ("#3 of 41 in NY fintech,
   2021 vintage"), and Hot and All-Star lists, now defined by calibrated momentum.
 - **Watchlists and a weekly email digest.** This is the feature that brings people back.
 - **LLM assist, where it helps and can be checked:**
@@ -310,35 +310,48 @@ baselines.
 
 ### Phase 5: Optional extensions
 
-- Add more countries with open registries (e.g. France's INPI and BODACC, Norway's
-  Brønnøysund registers, Singapore's ACRA).
+- Add more countries with open registries: UK Companies House first (SH01 rounds and
+  dissolutions), then e.g. France's INPI and BODACC, Norway's Brønnøysund registers,
+  Singapore's ACRA.
 - A founder-network graph (people who appear across many filings).
-- If commercial demand shows up: licensed enrichment (Crunchbase or Specter) in a separate
-  private tier, kept strictly apart from the open core.
+- *(Ruled out by the open-source decision: licensed vendor enrichment.)*
 
 ## 6. How we'll know it's valuable
 
 | Area | Target |
 |---|---|
 | Model | Precision@100 for "raises again within 18 months" at **≥3× the base rate** on held-out years. Brier score better than the baseline. Calibration error under 5 points. |
-| Data | Over 90% of Form D issuers since 2015 resolved to a stable entity. UK SH01 coverage for the chosen sectors. |
+| Data | Over 90% of Form D issuers since 2015 resolved to a stable entity. Coverage report by year and industry. |
 | Product | Weekly digest open rate. At least 10 real users (angels or scouts) who keep a watchlist. At least one "found it here first" story. |
 
 ## 7. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Form D misses companies that raise without filing, and SAFE reporting is uneven | Combine with Companies House and traction signals. State coverage limits in the UI. |
+| Form D misses companies that raise without filing, and SAFE reporting is uneven | Combine with Form C and traction signals. State coverage limits in the UI. |
 | Entity-resolution errors | Store match confidence. Let users flag and fix wrong matches. |
 | Labels are proxies (raising again ≠ success) | Show several outcomes (raise / fail / exit) instead of one "success" number |
 | Scraping and ToS exposure | Use only official APIs and bulk files. No LinkedIn or Wellfound. |
 | Scope creep for a solo builder | Phases 0–2 are useful on their own as an open dataset plus a backtest report. Ship them before building any UI. |
 
-## 8. Decisions needed from the owner
+## 8. Decisions (Oct 2026)
 
-1. **Audience and business model:** a personal tool for your own angel investing, an
-   open-source public good, or a commercial product? This decides whether Crunchbase or
-   vendor data is ever an option.
-2. **Geography:** US-only (Form D) first, or US + UK from the start?
-3. **Stack:** the plan assumes Python for data and ML plus a TypeScript frontend. Rewriting
-   everything in Node is possible, but the ML ecosystem is much weaker there.
+| Question | Decision | What it means |
+|---|---|---|
+| Audience and business model | **Open source** | Open, redistributable data only. Crunchbase and paid vendors are out. |
+| Geography | **US only** to start | Form D, Form C and EDGAR. Companies House moves to Phase 5. |
+| Stack | **Python** for data and ML, **TypeScript** frontend | DuckDB, LightGBM and FastAPI on the backend; React + Vite or Next.js on the frontend. |
+
+## 9. Progress
+
+- [x] Audit, research and roadmap (this document)
+- [x] Crunchbase key moved out of the code into `CRUNCHBASE_API_KEY`. **Revoke the old key
+      in the Crunchbase account**: it's still in git history.
+- [x] MIT LICENSE, Python project (`uv`), CI (ruff + pytest)
+- [x] Form D loader: downloader, schema-checked TSV loader, DuckDB staging tables
+- [x] Ledger views: `formd_filing`, `raise_event` (new money from amendment chains, funds
+      excluded), `company_snapshot(as_of)`, `raised_again_label(as_of, months)`
+- [ ] First real load. Check the column map in `src/investup/formd/schema.py` against actual
+      SEC files (they've only been tested against synthetic fixtures so far).
+- [ ] Remove the legacy 2015 app and the Crunchbase-derived `data/` files
+- [ ] Form C, EDGAR exits, entity resolution, data-quality report
