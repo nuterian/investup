@@ -236,3 +236,27 @@ def test_rate_limiter_spaces_requests(monkeypatch):
     for _ in range(3):
         limiter.wait()
     assert slept == [0.0, 0.12, 0.24]
+
+
+def test_fetch_skips_failures_and_backs_off_on_throttling(monkeypatch, tmp_path):
+    import urllib.error
+
+    formd_dir, edgar_dir, live_dir = tmp_path / "formd", tmp_path / "edgar", tmp_path / "live"
+    formd_dir.mkdir()
+    write_quarter_zip(formd_dir, "2026q2", [filing("a", "1", "A", "2026-05-01", "1", file_num="f")])
+    write_index(edgar_dir, "2026q3", [(1, "D", "2026-08-01", "ok"), (2, "D", "2026-08-02", "gone")])
+    monkeypatch.setattr(live.time, "sleep", lambda s: None)
+    calls = {"ok": 0}
+
+    def fake_get(url, delay=0):
+        if url.endswith("gone.txt"):
+            raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+        calls["ok"] += 1
+        if calls["ok"] == 1:
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)
+        return b"filing"
+
+    monkeypatch.setattr(live, "get", fake_get)
+    assert live.fetch(formd_dir, edgar_dir, live_dir) == 1
+    assert live.cache_path(live_dir, "2026q3", "ok").exists()
+    assert not live.cache_path(live_dir, "2026q3", "gone").exists()

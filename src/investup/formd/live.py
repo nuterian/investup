@@ -22,6 +22,7 @@ import re
 import tempfile
 import threading
 import time
+import urllib.error
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -35,8 +36,9 @@ from investup.sec import get
 ARCHIVES = "https://www.sec.gov/Archives/"
 FORMS = {"D", "D/A"}
 _QUARTER = re.compile(r"(\d{4})q([1-4])")
-_REQUEST_GAP = 0.12  # seconds between request starts: under the SEC's 10/second
-_WORKERS = 6  # parallel downloads; the rate limiter still caps the total
+_REQUEST_GAP = 0.2  # seconds between request starts: 5/second, half the SEC's limit
+_MAX_GAP = 2.0
+_WORKERS = 4  # parallel downloads; the rate limiter still caps the total
 
 
 class RateLimiter:
@@ -46,6 +48,10 @@ class RateLimiter:
         self.gap = gap
         self.lock = threading.Lock()
         self.next = 0.0
+
+    def slow_down(self) -> None:
+        with self.lock:
+            self.gap = min(self.gap * 2, _MAX_GAP)
 
     def wait(self) -> None:
         with self.lock:
@@ -123,20 +129,32 @@ def fetch(
 
     limiter = RateLimiter(_REQUEST_GAP)
     done = 0
+    failed = 0
     lock = threading.Lock()
 
     def one(item: tuple[str, str]) -> None:
-        nonlocal done
+        nonlocal done, failed
         quarter, filename = item
-        for attempt in range(4):
+        data = None
+        for attempt in range(5):
             limiter.wait()
             try:
                 data = get(ARCHIVES + filename, delay=0)
                 break
-            except OSError:  # network errors and HTTP 403/429/5xx (HTTPError)
-                if attempt == 3:
-                    raise
+            except urllib.error.HTTPError as e:
+                if e.code in (403, 429):  # the SEC is throttling us: slow everyone down
+                    limiter.slow_down()
+                    time.sleep(60)
+                elif e.code == 404:
+                    break
+                else:
+                    time.sleep(2**attempt * 5)
+            except OSError:  # network errors
                 time.sleep(2**attempt * 5)
+        if data is None:
+            with lock:
+                failed += 1  # left uncached; the next run retries it
+            return
         target = cache_path(live_dir, quarter, Path(filename).stem)
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(f".{threading.get_ident()}.part")
@@ -150,6 +168,8 @@ def fetch(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for _ in pool.map(one, todo):
             pass
+    if failed:
+        print(f"  {failed:,} filings couldn't be fetched; the next run will retry them")
     return done
 
 
