@@ -405,43 +405,57 @@ def detail_shards(con: duckdb.DuckDBPyConnection, since: dt.date, end: dt.date) 
         if cik in details:
             details[cik]["timeline"].append([_date(known), _money(money), bool(new_round), acc])
 
+    # People are matched across companies by full name only. The filing's state
+    # field often follows the company's address, so name + state misses moves.
+    # Names linked to more than 20 companies (common names, placement agents)
+    # are left unlinked.
     people = con.execute(
         f"""
-        WITH latest AS (
+        WITH person_name AS (
+            SELECT DISTINCT
+                upper(trim(p.first_name)) || ' ' || upper(trim(p.last_name)) AS name_key,
+                r.cik
+            FROM stg_formd_related_person AS p
+            JOIN raise_event AS r USING (accession_number)
+            WHERE length(trim(coalesce(p.first_name, ''))) > 1
+              AND length(trim(coalesce(p.last_name, ''))) > 1
+        ), degree AS (
+            SELECT name_key, count(*) AS n FROM person_name GROUP BY name_key
+        ), latest AS (
             SELECT r.cik, arg_max(r.accession_number, r.known_at) AS accession_number
             FROM raise_event AS r JOIN x_ciks USING (cik)
             GROUP BY r.cik
         ), named AS (
-            SELECT DISTINCT
+            SELECT
                 l.cik,
                 trim(p.first_name) AS first,
                 trim(p.last_name) AS last,
-                upper(trim(p.first_name)) || ' ' || upper(trim(p.last_name)) || '|'
-                    || coalesce(upper(trim(p.state)), '') AS person_key,
-                concat_ws(', ', p.relationship_1, p.relationship_2, p.relationship_3) AS roles
+                upper(trim(p.first_name)) || ' ' || upper(trim(p.last_name)) AS name_key,
+                string_agg(DISTINCT concat_ws(', ', p.relationship_1, p.relationship_2,
+                                              p.relationship_3), '; ') AS roles
             FROM latest AS l
             JOIN stg_formd_related_person AS p USING (accession_number)
             WHERE length(trim(coalesce(p.last_name, ''))) > 1
-        ), degree AS (
-            SELECT person_key, count(DISTINCT cik) AS n FROM person_company GROUP BY person_key
+            GROUP BY ALL
         ), other AS (
             SELECT
-                n.cik, n.person_key,
-                list(struct_pack(cik := pc.cik, name := cs.entity_name,
+                n.cik, n.name_key,
+                list(struct_pack(cik := pn.cik, name := cs.entity_name,
                                  public := year(m.went_public_at))
-                     ORDER BY m.went_public_at NULLS LAST, pc.first_seen_at DESC)[:5] AS companies
+                     ORDER BY m.went_public_at NULLS LAST, cs.last_raise_at DESC)[:5]
+                                                                   AS companies
             FROM named AS n
-            JOIN degree AS d USING (person_key)
-            JOIN person_company AS pc ON pc.person_key = n.person_key AND pc.cik <> n.cik
-            JOIN company_snapshot(DATE '{end}') AS cs ON cs.cik = pc.cik
-            LEFT JOIN edgar_milestone AS m ON m.cik = pc.cik
+            JOIN degree AS d USING (name_key)
+            JOIN person_name AS pn ON pn.name_key = n.name_key AND pn.cik <> n.cik
+            JOIN company_snapshot(DATE '{end}') AS cs ON cs.cik = pn.cik
+            LEFT JOIN edgar_milestone AS m ON m.cik = pn.cik
             WHERE d.n <= 20
-            GROUP BY n.cik, n.person_key
+            GROUP BY n.cik, n.name_key
         )
         SELECT n.cik, n.first, n.last, n.roles, o.companies
         FROM named AS n
-        LEFT JOIN other AS o USING (cik, person_key)
-        ORDER BY n.cik, n.last, n.first
+        LEFT JOIN other AS o USING (cik, name_key)
+        ORDER BY n.cik, (o.companies IS NULL), n.last, n.first
         """
     ).fetchall()
     for cik, first, last, roles, companies in people:

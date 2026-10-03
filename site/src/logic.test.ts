@@ -19,7 +19,8 @@ describe("format", () => {
     expect(pct(0.178)).toBe("18%");
     expect(pct(0.008)).toBe("0.8%");
     expect(pct(0.008, 1)).toBe("0.8%");
-    expect(topPct(0.985)).toBe("top 1.5%");
+    expect(topPct(0.985)).toBe("top 2%");
+    expect(topPct(0.995)).toBe("top 0.5%");
     expect(topPct(0.9995)).toBe("top 0.1%");
     expect(topPct(0.8)).toBe("top 20%");
     expect(topPct(0.2)).toBe("bottom half");

@@ -61,9 +61,12 @@ export function ScorePill({ c, kind, summary }: { c: Company; kind: ScoreKind; s
   const s = scoreParts(c, kind, summary);
   if (s.hit == null) return <span className="muted">–</span>;
   return (
-    <span className="pill" title={`${s.top} · ${s.text} of companies ranked here historically`}>
+    <span
+      className="pill"
+      title={`${s.text} of companies ranked here did it historically (${s.times} the average)`}
+    >
       {s.text}
-      <span className="pill-sub">{s.times}</span>
+      <span className="pill-sub">{s.top}</span>
     </span>
   );
 }
