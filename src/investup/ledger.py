@@ -21,7 +21,10 @@ from investup.formd.load import ensure_staging
 LEDGER_SQL = r"""
 CREATE OR REPLACE MACRO is_true(x) AS upper(coalesce(x, '')) IN ('Y', 'YES', 'TRUE', 'T', '1');
 
+-- The SEC changed formats over time: '2014-06-30 16:26:21' before 2020Q3,
+-- '30-SEP-2020' after it. Sale dates are '2014-06-16'.
 CREATE OR REPLACE MACRO parse_date(x) AS CAST(coalesce(
+    try_strptime(x, '%Y-%m-%d %H:%M:%S'),
     try_strptime(x, '%Y-%m-%d'),
     try_strptime(x, '%d-%b-%Y'),
     try_strptime(x, '%m/%d/%Y')
@@ -36,6 +39,7 @@ CREATE OR REPLACE MACRO parse_amount(x) AS
 CREATE OR REPLACE VIEW formd_filing AS
 WITH s AS (
     SELECT DISTINCT ON (accession_number) * FROM stg_formd_submission
+    WHERE upper(coalesce(test_or_live, 'LIVE')) <> 'TEST'
     ORDER BY accession_number, source_quarter DESC
 ), i AS (
     SELECT DISTINCT ON (accession_number) * FROM stg_formd_issuer
@@ -79,12 +83,48 @@ FROM s
 JOIN i USING (accession_number)
 JOIN o USING (accession_number);
 
+-- Coarse sectors from the Form D industry groups. Venture sectors leave out
+-- finance, insurance, real estate and extractive/utility businesses, which file
+-- Form D for reasons unrelated to startup growth.
+CREATE OR REPLACE MACRO sector(industry_group) AS CASE
+    WHEN industry_group IN ('Computers', 'Telecommunications', 'Other Technology')
+        THEN 'Technology'
+    WHEN industry_group IN ('Biotechnology', 'Pharmaceuticals', 'Hospitals and Physicians',
+                            'Health Insurance', 'Other Health Care')
+        THEN 'Health Care'
+    WHEN industry_group IN ('Energy Conservation', 'Environmental Services', 'Other Energy')
+        THEN 'Energy'
+    WHEN industry_group IN ('Oil and Gas', 'Coal Mining', 'Electric Utilities')
+        THEN 'Extractive & Utilities'
+    WHEN industry_group IN ('Commercial Banking', 'Insurance', 'Investing', 'Investment Banking',
+                            'Pooled Investment Fund', 'Other Banking and Financial Services')
+        THEN 'Financial Services'
+    WHEN industry_group IN ('Commercial', 'Construction', 'REITS and Finance', 'Residential',
+                            'Other Real Estate')
+        THEN 'Real Estate'
+    WHEN industry_group IN ('Retailing', 'Restaurants', 'Airlines and Airports',
+                            'Lodging and Conventions', 'Tourism and Travel Services',
+                            'Other Travel')
+        THEN 'Consumer'
+    WHEN industry_group IN ('Manufacturing', 'Agriculture') THEN 'Industrial'
+    WHEN industry_group = 'Business Services' THEN 'Business Services'
+    ELSE 'Other'
+END;
+
+CREATE OR REPLACE MACRO is_venture_sector(s) AS
+    s NOT IN ('Financial Services', 'Real Estate', 'Extractive & Utilities');
+
 -- Raises by operating companies. Investment funds (VC/PE/hedge funds also file
 -- Form D) and business-combination filings are excluded.
 --
 -- An offering and its amendments share a file number. Amendments report the
 -- cumulative amount sold, so new money = the increase over the previous filing
 -- in the same chain. That uses only earlier filings, so it doesn't leak.
+--
+-- Filers sometimes fix a typo with a same-day amendment (e.g. $104,999,999,994
+-- corrected to $104,999,994). For each offering and day we keep only the last
+-- filing. Amounts that still aren't plausible are flagged and left out of
+-- company totals and labels.
 CREATE OR REPLACE VIEW raise_event AS
 WITH ops AS (
     SELECT *, coalesce(file_num, accession_number) AS offering_key
@@ -93,6 +133,10 @@ WITH ops AS (
       AND NOT is_business_combination
       AND cik IS NOT NULL
       AND known_at IS NOT NULL
+    QUALIFY row_number() OVER (
+        PARTITION BY cik, coalesce(file_num, accession_number), known_at
+        ORDER BY accession_number DESC
+    ) = 1
 ), chained AS (
     SELECT
         *,
@@ -107,6 +151,7 @@ SELECT
     entity_name,
     state,
     industry_group,
+    sector(industry_group)                                       AS sector,
     offering_key,
     filing_seq,
     filing_seq = 1                                               AS is_new_offering,
@@ -120,6 +165,8 @@ SELECT
     total_amount_sold,
     greatest(coalesce(total_amount_sold, 0) - coalesce(prev_amount_sold, 0), 0)
                                                                  AS new_money,
+    (new_money >= 1e9 AND coalesce(total_investors, 0) <= 1) OR new_money >= 5e10
+                                                                 AS is_suspect_amount,
     total_investors,
     revenue_range,
     source_quarter
@@ -128,7 +175,9 @@ FROM chained;
 -- What was publicly known about every company on `as_of`.
 CREATE OR REPLACE MACRO company_snapshot(as_of) AS TABLE
 WITH visible AS (
-    SELECT *, CAST(as_of AS DATE) AS snapshot_date
+    SELECT
+        * REPLACE (CASE WHEN is_suspect_amount THEN 0 ELSE new_money END AS new_money),
+        CAST(as_of AS DATE)                                      AS snapshot_date
     FROM raise_event
     WHERE known_at <= CAST(as_of AS DATE)
 ), agg AS (
@@ -138,6 +187,8 @@ WITH visible AS (
         arg_max(entity_name, known_at)                           AS entity_name,
         arg_max(state, known_at)                                 AS state,
         mode(industry_group)                                     AS industry_group,
+        sector(mode(industry_group))                             AS sector,
+        is_venture_sector(sector(mode(industry_group)))          AS is_venture_sector,
         min(year_of_inc)                                         AS year_of_inc,
         min(known_at)                                            AS first_filing_at,
         max(known_at) FILTER (WHERE new_money > 0)               AS last_raise_at,
@@ -164,7 +215,8 @@ WITH win AS (
 ), future AS (
     SELECT DISTINCT r.cik
     FROM raise_event AS r, win
-    WHERE r.new_money > 0 AND r.known_at > win.start_date AND r.known_at <= win.end_date
+    WHERE r.new_money > 0 AND NOT r.is_suspect_amount
+      AND r.known_at > win.start_date AND r.known_at <= win.end_date
 )
 SELECT
     snap.cik,
@@ -187,7 +239,13 @@ def stats(con: duckdb.DuckDBPyConnection) -> list[tuple]:
             count(*)                                         AS filings,
             count(*) FILTER (WHERE is_new_offering)          AS new_offerings,
             count(DISTINCT cik)                              AS companies,
-            round(sum(new_money) / 1e9, 2)                   AS new_money_bn
+            round(sum(new_money) FILTER (WHERE NOT is_suspect_amount) / 1e9, 2)
+                                                             AS new_money_bn,
+            count(DISTINCT cik) FILTER (WHERE is_venture_sector(sector))
+                                                             AS venture_companies,
+            round(sum(new_money) FILTER (
+                WHERE is_venture_sector(sector) AND NOT is_suspect_amount) / 1e9, 2)
+                                                             AS venture_money_bn
         FROM raise_event
         GROUP BY 1 ORDER BY 1
         """

@@ -34,9 +34,15 @@ def cmd_load(args: argparse.Namespace) -> None:
 def cmd_stats(args: argparse.Namespace) -> None:
     con = _connect(args.db)
     ledger.build(con)
-    print(f"{'year':>6} {'filings':>9} {'new offerings':>14} {'companies':>10} {'new $bn':>9}")
-    for year, filings, offerings, companies, money in ledger.stats(con):
-        print(f"{year!s:>6} {filings:>9,} {offerings:>14,} {companies:>10,} {money or 0:>9,.2f}")
+    print(
+        f"{'year':>6} {'filings':>9} {'new offerings':>14} {'companies':>10} {'new $bn':>9}"
+        f" {'venture cos':>12} {'venture $bn':>12}"
+    )
+    for year, filings, offerings, companies, money, v_cos, v_money in ledger.stats(con):
+        print(
+            f"{year!s:>6} {filings:>9,} {offerings:>14,} {companies:>10,} {money or 0:>9,.2f}"
+            f" {v_cos:>12,} {v_money or 0:>12,.2f}"
+        )
 
 
 def main(argv: list[str] | None = None) -> None:

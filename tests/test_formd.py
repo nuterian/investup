@@ -126,7 +126,94 @@ def test_quarter_helpers():
     assert download.last_complete_quarter(dt.date(2026, 2, 1)) == (2025, 4)
 
 
-def test_download_requires_contact_user_agent(monkeypatch, tmp_path):
+def test_download_requires_contact_user_agent(monkeypatch):
     monkeypatch.delenv("INVESTUP_USER_AGENT", raising=False)
     with pytest.raises(RuntimeError, match="INVESTUP_USER_AGENT"):
-        download.download_quarter(2020, 1, tmp_path)
+        download.user_agent()
+
+
+def test_parse_index_handles_mixed_paths_and_suffixes():
+    html = """
+    <a href="/files/datastandardsinnovation/data/form-d-data-sets/2026q2_d.zip">2026 Q2</a>
+    <a href="/files/structureddata/data/form-d-data-sets/2008q2_d_0.zip">2008 Q2</a>
+    <a href="https://www.sec.gov/files/structureddata/data/form-d-data-sets/2015q1_d.zip">x</a>
+    <a href="/files/Form_D.pdf">Form D</a>
+    """
+    assert download.parse_index(html) == {
+        (
+            2026,
+            2,
+        ): "https://www.sec.gov/files/datastandardsinnovation/data/form-d-data-sets/2026q2_d.zip",
+        (2008, 2): "https://www.sec.gov/files/structureddata/data/form-d-data-sets/2008q2_d_0.zip",
+        (2015, 1): "https://www.sec.gov/files/structureddata/data/form-d-data-sets/2015q1_d.zip",
+    }
+
+
+def test_test_filings_are_excluded(con, tmp_path):
+    live = filing("0007-20-000001", "7007", "Live Co", "2020-01-10", "100", file_num="021-7")
+    test = filing(
+        "0008-20-000001", "8008", "Test Co", "2020-01-10", "100", file_num="021-8", test=True
+    )
+    load.load_zip(con, write_quarter_zip(tmp_path, "2020q1", [live, test]))
+    ledger.build(con)
+    assert con.execute("SELECT list(cik) FROM formd_filing").fetchone()[0] == [7007]
+
+
+def test_same_day_correction_replaces_typo(con, tmp_path):
+    typo = filing(
+        "0009-18-000001",
+        "9009",
+        "Livo Health",
+        "2018-04-23",
+        "104999999994",
+        file_num="021-9",
+        investors="15",
+    )
+    fixed = filing(
+        "0009-18-000002",
+        "9009",
+        "Livo Health",
+        "2018-04-23",
+        "104999994",
+        file_num="021-9",
+        sub_type="D/A",
+        investors="15",
+    )
+    load.load_zip(con, write_quarter_zip(tmp_path, "2018q2", [typo, fixed]))
+    ledger.build(con)
+    assert con.execute(
+        "SELECT list(accession_number), sum(new_money) FROM raise_event WHERE cik = 9009"
+    ).fetchone() == (["0009-18-000002"], 104_999_994)
+
+
+def test_implausible_amounts_are_flagged_and_excluded(con, tmp_path):
+    shell = filing(
+        "0010-24-000001",
+        "1010",
+        "Shell Holding Co",
+        "2024-07-09",
+        "48000000000",
+        file_num="021-10",
+        investors="1",
+    )
+    load.load_zip(con, write_quarter_zip(tmp_path, "2024q3", [shell]))
+    ledger.build(con)
+    assert (
+        con.execute("SELECT is_suspect_amount FROM raise_event WHERE cik = 1010").fetchone()[0]
+        is True
+    )
+    assert con.execute(
+        "SELECT total_raised, last_raise_at FROM company_snapshot(DATE '2025-01-01') "
+        "WHERE cik = 1010"
+    ).fetchone() == (0, None)
+
+
+def test_sectors(con, sample_quarters):
+    build(con, sample_quarters)
+    rows = dict(
+        con.execute(
+            "SELECT cik, (sector, is_venture_sector) FROM company_snapshot(DATE '2020-01-01')"
+        ).fetchall()
+    )
+    assert rows[1001] == ("Technology", True)
+    assert rows[3003] == ("Health Care", True)

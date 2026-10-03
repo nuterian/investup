@@ -1,6 +1,11 @@
 """Download SEC Form D quarterly data set ZIPs.
 
-SEC fair-access rules: identify yourself with a User-Agent containing a name and
+We read the SEC's Form D data sets page to find each quarter's link rather
+than guessing URLs. The files live under more than one path
+(/files/structureddata/... and, since 2026, /files/datastandardsinnovation/...),
+and some have suffixes such as 2008q2_d_0.zip.
+
+SEC fair-access rules: identify yourself with a User-Agent that includes a
 contact email, and stay under 10 requests/second.
 https://www.sec.gov/os/accessing-edgar-data
 """
@@ -11,21 +16,13 @@ import datetime as dt
 import os
 import re
 import time
-import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# SEC moved its structured data sets from /files/structureddata/ to
-# /files/datastandardsinnovation/ in 2026. We try the new location first and fall back to
-# the old one. Override with INVESTUP_FORMD_URL_TEMPLATE if the SEC moves them again
-# (the template gets {year} and {quarter}).
-URL_TEMPLATES = (
-    "https://www.sec.gov/files/datastandardsinnovation/data/form-d-data-sets/{year}q{quarter}_d.zip",
-    "https://www.sec.gov/files/structureddata/data/form-d-data-sets/{year}q{quarter}_d.zip",
-)
-
-FIRST_QUARTER = (2008, 1)
+INDEX_URL = "https://www.sec.gov/data-research/sec-markets-data/form-d-data-sets"
 _QUARTER_RE = re.compile(r"^(\d{4})[qQ]([1-4])$")
+_ZIP_LINK_RE = re.compile(r'href="([^"]*?/(\d{4})q([1-4])_d(?:_\d+)?\.zip)"', re.IGNORECASE)
 
 
 def parse_quarter(text: str) -> tuple[int, int]:
@@ -54,56 +51,63 @@ def quarter_filename(year: int, quarter: int) -> str:
     return f"{year}q{quarter}_d.zip"
 
 
-def _user_agent() -> str:
+def user_agent() -> str:
     ua = os.environ.get("INVESTUP_USER_AGENT", "").strip()
     if "@" not in ua:
         raise RuntimeError(
             "Set INVESTUP_USER_AGENT to 'Your Name your@email.com'. "
-            "The SEC requires a contact in the User-Agent for automated downloads."
+            "The SEC requires a contact email in the User-Agent and rejects requests without one."
         )
     return ua
 
 
-def _templates() -> tuple[str, ...]:
-    override = os.environ.get("INVESTUP_FORMD_URL_TEMPLATE")
-    return (override,) if override else URL_TEMPLATES
+def _get(url: str) -> bytes:
+    req = urllib.request.Request(
+        url, headers={"User-Agent": user_agent(), "Accept-Encoding": "identity"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            return resp.read()
+    finally:
+        time.sleep(0.2)  # well under the SEC's 10 req/s limit
 
 
-def download_quarter(year: int, quarter: int, dest: Path, *, force: bool = False) -> Path | None:
-    """Download one quarter. Returns the path, or None if no URL template had it."""
-    dest.mkdir(parents=True, exist_ok=True)
-    target = dest / quarter_filename(year, quarter)
-    if target.exists() and not force:
-        return target
+def parse_index(html: str, base_url: str = INDEX_URL) -> dict[tuple[int, int], str]:
+    """Map (year, quarter) to an absolute ZIP URL from the data sets page."""
+    links: dict[tuple[int, int], str] = {}
+    for href, year, quarter in _ZIP_LINK_RE.findall(html):
+        links.setdefault((int(year), int(quarter)), urllib.parse.urljoin(base_url, href))
+    return links
 
-    headers = {"User-Agent": _user_agent(), "Accept-Encoding": "identity"}
-    for template in _templates():
-        url = template.format(year=year, quarter=quarter)
-        req = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                tmp = target.with_suffix(".part")
-                tmp.write_bytes(resp.read())
-                tmp.replace(target)
-                return target
-        except urllib.error.HTTPError as e:
-            if e.code != 404:
-                raise
-        finally:
-            time.sleep(0.2)  # well under the SEC's 10 req/s limit
-    return None
+
+def available_quarters() -> dict[tuple[int, int], str]:
+    index_url = os.environ.get("INVESTUP_FORMD_INDEX_URL", INDEX_URL)
+    links = parse_index(_get(index_url).decode("utf-8", "replace"), index_url)
+    if not links:
+        raise RuntimeError(f"No Form D ZIP links found on {index_url}; has the page moved?")
+    return links
 
 
 def download_range(
     start: tuple[int, int], end: tuple[int, int], dest: Path, *, force: bool = False
 ) -> list[Path]:
+    dest.mkdir(parents=True, exist_ok=True)
+    links = available_quarters()
     paths = []
     for year, quarter in quarter_range(start, end):
-        path = download_quarter(year, quarter, dest, force=force)
         label = f"{year}q{quarter}"
-        if path is None:
-            print(f"{label}: not found at any known URL (set INVESTUP_FORMD_URL_TEMPLATE?)")
-        else:
-            print(f"{label}: {path}")
-            paths.append(path)
+        target = dest / quarter_filename(year, quarter)
+        if target.exists() and not force:
+            print(f"{label}: already downloaded")
+            paths.append(target)
+            continue
+        url = links.get((year, quarter))
+        if url is None:
+            print(f"{label}: not published yet")
+            continue
+        tmp = target.with_suffix(".part")
+        tmp.write_bytes(_get(url))
+        tmp.replace(target)
+        print(f"{label}: {target} ({target.stat().st_size / 1e6:.1f} MB)")
+        paths.append(target)
     return paths

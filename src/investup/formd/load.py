@@ -32,6 +32,11 @@ def ensure_staging(con: duckdb.DuckDBPyConnection) -> None:
             f"CREATE TABLE IF NOT EXISTS {staging_table(spec)} "
             f"({cols}, source_quarter VARCHAR NOT NULL)"
         )
+        # Databases created by an older version may lack newly mapped columns.
+        for c in spec.columns:
+            con.execute(
+                f"ALTER TABLE {staging_table(spec)} ADD COLUMN IF NOT EXISTS {c.name} VARCHAR"
+            )
 
 
 def quarter_label(path: Path) -> str:
@@ -97,7 +102,10 @@ def load_zip(con: duckdb.DuckDBPyConnection, zip_path: Path) -> dict[str, int]:
                 )
                 table = staging_table(spec)
                 con.execute(f"DELETE FROM {table} WHERE source_quarter = ?", [quarter])
-                con.execute(f"INSERT INTO {table} SELECT {select}, ? FROM raw", [quarter])
+                con.execute(
+                    f"INSERT INTO {table} BY NAME SELECT {select}, ? AS source_quarter FROM raw",
+                    [quarter],
+                )
                 counts[spec.name] = con.execute(
                     f"SELECT count(*) FROM {table} WHERE source_quarter = ?", [quarter]
                 ).fetchone()[0]

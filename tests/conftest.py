@@ -12,7 +12,14 @@ from pathlib import Path
 import duckdb
 import pytest
 
-SUBMISSION_COLS = ["ACCESSIONNUMBER", "FILE_NUM", "FILING_DATE", "SIC_CODE", "SUBMISSIONTYPE"]
+SUBMISSION_COLS = [
+    "ACCESSIONNUMBER",
+    "FILE_NUM",
+    "FILING_DATE",
+    "SIC_CODE",
+    "SUBMISSIONTYPE",
+    "TESTORLIVE",
+]
 ISSUER_COLS = [
     "ACCESSIONNUMBER",
     "IS_PRIMARYISSUER_FLAG",
@@ -25,7 +32,7 @@ ISSUER_COLS = [
     "JURISDICTIONOFINC",
     "ENTITYTYPE",
     "YEAROFINC_TIMESPAN_CHOICE",
-    "YEAROFINC_VALUE",
+    "YEAROFINC_VALUE_ENTERED",
 ]
 OFFERING_COLS = [
     "ACCESSIONNUMBER",
@@ -77,15 +84,16 @@ def filing(
     industry: str = "Other Technology",
     fund_type: str = "",
     investors: str = "5",
+    test: bool = False,
 ) -> dict:
     is_amendment = "true" if sub_type == "D/A" else "false"
     pooled = "true" if fund_type else "false"
     return {
-        "submission": [acc, file_num, filed, "", sub_type],
+        "submission": [acc, file_num, filed, "", sub_type, "TEST" if test else "LIVE"],
         "issuers": [
             [
                 acc,
-                "Y",
+                "YES",
                 "1",
                 cik,
                 name,
@@ -204,7 +212,7 @@ def sample_quarters(tmp_path: Path) -> Path:
         "0003-16-000001",
         "3003",
         "Beta Bio Inc",
-        "2016-05-10",
+        "2016-05-10 14:02:11",
         "0",
         file_num="021-3",
         offered="1000000",

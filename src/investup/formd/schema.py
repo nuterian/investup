@@ -6,10 +6,9 @@ snake_case names. Each canonical column lists every header spelling we accept, s
 a renamed column fails loudly (required) or becomes NULL with a warning
 (optional) instead of silently loading garbage.
 
-NOTE: the header names below follow the SEC Form D data set documentation and
-the Form D XML schema (element names such as totalAmountSold, dateOfFirstSale).
-They have not yet been checked against a live download from this repo; run
-`investup formd load` on a real quarter and fix any SchemaError it raises.
+Primary names were checked against the real 2024Q1 data set. Each quarterly ZIP
+also includes FormD_readme.html and FormD_metadata.json, the SEC's own field
+reference. Aliases cover spellings seen in older quarters or the XML schema.
 """
 
 from __future__ import annotations
@@ -65,6 +64,7 @@ SUBMISSION = TableSpec(
         _c("filing_date", "FILING_DATE", "FILINGDATE", required=True),
         _c("sic_code", "SIC_CODE", "SICCODE"),
         _c("submission_type", "SUBMISSIONTYPE", "SUBMISSION_TYPE", required=True),
+        _c("test_or_live", "TESTORLIVE"),
     ),
 )
 
@@ -82,7 +82,7 @@ ISSUER = TableSpec(
         _c("jurisdiction", "JURISDICTIONOFINC"),
         _c("entity_type", "ENTITYTYPE"),
         _c("year_of_inc_choice", "YEAROFINC_TIMESPAN_CHOICE"),
-        _c("year_of_inc", "YEAROFINC_VALUE"),
+        _c("year_of_inc", "YEAROFINC_VALUE_ENTERED", "YEAROFINC_VALUE"),
     ),
 )
 

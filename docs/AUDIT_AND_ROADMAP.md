@@ -351,7 +351,27 @@ baselines.
 - [x] Form D loader: downloader, schema-checked TSV loader, DuckDB staging tables
 - [x] Ledger views: `formd_filing`, `raise_event` (new money from amendment chains, funds
       excluded), `company_snapshot(as_of)`, `raised_again_label(as_of, months)`
-- [ ] First real load. Check the column map in `src/investup/formd/schema.py` against actual
-      SEC files (they've only been tested against synthetic fixtures so far).
-- [ ] Remove the legacy 2015 app and the Crunchbase-derived `data/` files
+- [x] First real load: all 74 quarterly files (2008Q1–2026Q2), about 190 MB, with no
+      schema warnings. Fixes this required:
+      - the downloader now reads the SEC index page, because file paths and suffixes vary;
+      - added the `YEAROFINC_VALUE_ENTERED` header;
+      - parse both filing-date formats (timestamps before 2020Q3, `30-SEP-2020` after).
+- [x] Data-quality rules from the real data:
+      - same-day correction filings replace the typo (e.g. a $105B typo corrected to $105M);
+      - implausible amounts are flagged (32 events);
+      - coarse sectors and an `is_venture_sector` filter.
+- [x] Legacy 2015 app and Crunchbase-derived `data/` removed (history: `ebc039f`)
+- [ ] Flag issuers that are public reporting companies (e.g. Verizon and Philip Morris
+      appear in Form D) using EDGAR submissions, plus insurance "separate account" filers
+      tagged "Other"
 - [ ] Form C, EDGAR exits, entity resolution, data-quality report
+
+### First numbers from the real ledger
+
+| | |
+|---|---|
+| Operating-company Form D filings | about 15–23k a year since 2010 |
+| Venture-sector companies raising per year | about 9–12k |
+| Venture-sector new money | about $45–200B a year; 2021 peak about $203B |
+| Base rate for Phase 2 | 24.2% of active venture-sector companies on 2019-01-01 (raised in the prior 36 months; n = 21,353) reported new money within 18 months. Precision@N for the model should beat this. |
+| Known coverage gaps | Some large companies (e.g. OpenAI, Anthropic, Rippling) don't show up under their own name. Stripe, Databricks, Figma and xAI do. |

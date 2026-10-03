@@ -9,7 +9,7 @@ the chance it raises again in the next 18 months, with the reasons behind every 
 
 > **Status: rebuilding.** This started as a 2015 class project built on Crunchbase data.
 > [`docs/AUDIT_AND_ROADMAP.md`](docs/AUDIT_AND_ROADMAP.md) explains why it's being rebuilt
-> and what the plan is. Right now we're in Phase 1: the open funding ledger.
+> and what the plan is. Right now we're in Phase 1: the open funding ledger (Form D 2008–2026 loads end to end).
 
 ## Principles
 
@@ -35,9 +35,11 @@ uv run investup load                      # -> data/investup.duckdb
 uv run investup stats                     # yearly coverage summary
 ```
 
-If the SEC moves the files again, set `INVESTUP_FORMD_URL_TEMPLATE`, for example
-`https://www.sec.gov/.../{year}q{quarter}_d.zip`. You can also download the ZIPs by hand into
-`data/raw/formd/`.
+The downloader finds each quarter's ZIP by reading the SEC's
+[Form D data sets page](https://www.sec.gov/data-research/sec-markets-data/form-d-data-sets).
+If that page moves, set `INVESTUP_FORMD_INDEX_URL`, or download the ZIPs by hand into
+`data/raw/formd/`. The full history (2008 to now) is about 190 MB and takes about a minute
+to download and about a minute to load.
 
 ### Querying the ledger
 
@@ -50,8 +52,8 @@ uv run python -c "import duckdb; c = duckdb.connect('data/investup.duckdb'); \
 |---|---|
 | `stg_formd_*` | Raw SEC rows, all text, tagged with `source_quarter` |
 | `formd_filing` | One typed row per filing: primary issuer joined to the offering |
-| `raise_event` | Operating-company raises (investment funds excluded), with `new_money` derived from amendment chains |
-| `company_snapshot(as_of)` | What was publicly known about each company on `as_of` |
+| `raise_event` | Operating-company raises (investment funds excluded), with `new_money` derived from amendment chains, a coarse `sector`, and an `is_suspect_amount` flag for implausible filer-reported amounts |
+| `company_snapshot(as_of)` | What was publicly known about each company on `as_of`. Filter on `is_venture_sector` to drop finance, real estate and extractive companies |
 | `raised_again_label(as_of, months)` | Phase 2 training label: did the company report new money in the next N months? |
 
 ## Development
@@ -61,12 +63,11 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
 
-## Legacy 2015 app
+## History
 
-The original Node/Express + React 0.13 app (`index.js`, `modules/`, `public/`, `views/`)
-is still in the tree for reference but **doesn't work**. It depends on a retired Crunchbase
-API, and its model leaks its label (see the audit). It will be removed. Its
-Crunchbase-derived data under `data/` can't be redistributed and will be removed too.
+The original 2015 Node/Express + React app is in git history at commit `ebc039f`. It was
+removed because it depended on a retired Crunchbase API, its model leaked its label (see
+the audit), and its Crunchbase-derived data can't be redistributed.
 
 ## License
 
