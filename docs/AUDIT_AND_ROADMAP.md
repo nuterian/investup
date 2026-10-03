@@ -361,10 +361,40 @@ baselines.
       - implausible amounts are flagged (32 events);
       - coarse sectors and an `is_venture_sector` filter.
 - [x] Legacy 2015 app and Crunchbase-derived `data/` removed (history: `ebc039f`)
-- [ ] Flag issuers that are public reporting companies (e.g. Verizon and Philip Morris
-      appear in Form D) using EDGAR submissions, plus insurance "separate account" filers
-      tagged "Other"
-- [ ] Form C, EDGAR exits, entity resolution, data-quality report
+- [x] EDGAR milestones from the quarterly master indexes (2008Q1–2026Q3): point-in-time
+      public status, IPO registration and prospectus, fund filings, Form C, Reg A.
+      Checked against Airbnb, Snowflake, Coinbase and Uber.
+- [x] Universe hygiene:
+      - US headquarters only. This removes Canadian junior miners that file Form D for
+        US placements.
+      - Name rules for separate accounts, funds, SPVs, co-invest/feeder vehicles and LLPs.
+      - Deterministic tie-breaks in snapshots, which fixed universe size varying between
+        runs.
+- [x] Phase 2 baseline:
+      - `features(as_of)` covers raise history, recency, offering status, revenue range,
+        sector heat and team track record (people on earlier companies and earlier IPOs).
+      - `investup backtest` runs a walk-forward backtest with AUC, AP, P@k and Brier
+        (metrics are unit-tested).
+      - `investup score` ranks today's private companies, with the reason for each score.
+- [ ] LightGBM challenger with per-company explanations. Blocked: PyPI is unreachable from
+      the current cloud environment.
+- [ ] Size-aware label, e.g. "raises a larger round" or "raises at least $X". The top of
+      the `next_round` ranking favours small companies that raise often in small amounts.
+- [ ] Form C as its own funding source, entity resolution across renamed CIKs,
+      data-quality report
+
+### Backtest results (walk-forward, test years 2016–2024)
+
+| Label | Base rate | Model | AUC | P@100 | P@1000 |
+|---|---|---|---|---|---|
+| New round within 18 months | ~20% | `recency` rule | 0.675 | 58.8% | 46.5% |
+| New round within 18 months | ~20% | `cell` model | 0.692 | 49.7% | 46.9% |
+| Went public within 36 months | ~0.8% | `cell` model | 0.812 | 13.1% | 6.3% |
+
+For the 2019 test year, 193 of the 208 companies that went public did so through a priced
+IPO, so this label isn't dominated by shell listings. Twenty of the cell model's top 100
+on 2019-01-01 went public within 36 months, including Fulcrum, Harpoon, Gossamer Bio,
+ShockWave Medical and Berkeley Lights.
 
 ### First numbers from the real ledger
 
@@ -373,5 +403,5 @@ baselines.
 | Operating-company Form D filings | about 15–23k a year since 2010 |
 | Venture-sector companies raising per year | about 9–12k |
 | Venture-sector new money | about $45–200B a year; 2021 peak about $203B |
-| Base rate for Phase 2 | 24.2% of active venture-sector companies on 2019-01-01 (raised in the prior 36 months; n = 21,353) reported new money within 18 months. Precision@N for the model should beat this. |
+| Base rate for Phase 2 | About 24% of active venture-sector companies reported any new money within 18 months, and about 20% started a new round. This was before the universe was narrowed to US, non-vehicle companies; see the backtest results above. |
 | Known coverage gaps | Some large companies (e.g. OpenAI, Anthropic, Rippling) don't show up under their own name. Stripe, Databricks, Figma and xAI do. |

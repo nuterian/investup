@@ -30,9 +30,11 @@ uv sync
 # The SEC requires a contact in the User-Agent for automated downloads.
 export INVESTUP_USER_AGENT="Your Name you@example.com"
 
-uv run investup download --start 2015q1   # quarterly Form D ZIPs -> data/raw/formd/
-uv run investup load                      # -> data/investup.duckdb
-uv run investup stats                     # yearly coverage summary
+uv run investup download   # Form D data sets + EDGAR indexes, 2008 to now (~430 MB)
+uv run investup load       # -> data/investup.duckdb (~2 minutes)
+uv run investup stats      # yearly coverage summary
+uv run investup backtest   # walk-forward backtest -> docs/BACKTEST.md
+uv run investup score      # rank today's private companies, with reasons
 ```
 
 The downloader finds each quarter's ZIP by reading the SEC's
@@ -54,7 +56,24 @@ uv run python -c "import duckdb; c = duckdb.connect('data/investup.duckdb'); \
 | `formd_filing` | One typed row per filing: primary issuer joined to the offering |
 | `raise_event` | Operating-company raises (investment funds excluded), with `new_money` derived from amendment chains, a coarse `sector`, and an `is_suspect_amount` flag for implausible filer-reported amounts |
 | `company_snapshot(as_of)` | What was publicly known about each company on `as_of`. Filter on `is_venture_sector` to drop finance, real estate and extractive companies |
-| `raised_again_label(as_of, months)` | Phase 2 training label: did the company report new money in the next N months? |
+| `edgar_milestone` | First date each CIK filed a periodic report, an S-1/F-1, an IPO prospectus, fund forms, Form C or Reg A |
+| `venture_universe(as_of, months)` | The population we score: private, US, venture-sector, not a fund/SPV/LLP, raised within N months |
+| `features(as_of, months)` | Point-in-time model features, including the team's track record from Form D related persons |
+| `next_round_label`, `raised_again_label`, `went_public_label` `(as_of, months)` | Outcomes in the N months after `as_of` |
+
+## Results so far
+
+Walk-forward backtests over test years 2016–2024. Full tables are in
+[`docs/BACKTEST.md`](docs/BACKTEST.md) and
+[`docs/BACKTEST_went_public.md`](docs/BACKTEST_went_public.md).
+
+| Question | Base rate | Best model | AUC | Precision in top 100 |
+|---|---|---|---|---|
+| Starts a new round within 18 months | ~20% | `cell` / `recency` | 0.69 | 50–59% |
+| Goes public within 36 months | ~0.8% | `cell` | 0.81 | 13% (17x lift) |
+
+The models are deliberately simple so far: a hand rule and a smoothed "companies like
+this" lookup, both fitted in DuckDB. They set the bar a gradient-boosted model has to beat.
 
 ## Development
 

@@ -217,3 +217,29 @@ def test_sectors(con, sample_quarters):
     )
     assert rows[1001] == ("Technology", True)
     assert rows[3003] == ("Health Care", True)
+
+
+@pytest.mark.parametrize(
+    ("name", "vehicle"),
+    [
+        ("Gaingels Early Stage Fund I LLC", True),
+        ("Zive SPV Manager LLC", True),
+        ("Madison Air Co-Investors LLC", True),
+        ("KILICO Variable Series I Separate Account", True),
+        ("HF Marketable Securities Pool, LLC", True),
+        ("Fundbox, Inc.", False),
+        ("Fund That Flip, Inc.", False),
+        ("Gene Pool Technologies Inc.", False),
+        ("Stripe, Inc.", False),
+    ],
+)
+def test_investment_vehicle_names(con, name, vehicle):
+    ledger.build(con)
+    assert con.execute("SELECT looks_like_investment_vehicle(?)", [name]).fetchone()[0] is vehicle
+
+
+def test_partnership_firm_names(con):
+    ledger.build(con)
+    check = "SELECT looks_like_partnership_firm(?)"
+    assert con.execute(check, ["DELOITTE & TOUCHE LLP"]).fetchone()[0] is True
+    assert con.execute(check, ["Allpoint Inc"]).fetchone()[0] is False

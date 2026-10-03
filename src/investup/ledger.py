@@ -112,13 +112,32 @@ CREATE OR REPLACE MACRO sector(industry_group) AS CASE
     ELSE 'Other'
 END;
 
--- Insurance separate accounts and LLC/LP "pools" file Form D under ordinary
--- industry codes without ticking the pooled-fund box. Catch them by name. The
--- pattern is deliberately narrow: broader ones also hit real startups (e.g.
--- "Gene Pool Technologies", "Information Assurance Corp").
+-- Insurance separate accounts, LLC/LP pools and funds, SPVs, co-invest and
+-- feeder vehicles file Form D under ordinary industry codes without ticking the
+-- pooled-fund box. Catch them by name. The patterns are anchored to the legal
+-- suffix on purpose: looser ones also hit real startups (e.g. "Gene Pool
+-- Technologies", "Fundbox").
 CREATE OR REPLACE MACRO looks_like_investment_vehicle(name) AS regexp_matches(
     upper(coalesce(name, '')),
-    '(SEPARATE ACCOUNT|VARIABLE (ACCOUNT|SERIES)|\bPOOL( [IVX0-9]+)?,? (LLC|L\.?P\.?)$)'
+    '(SEPARATE ACCOUNT|VARIABLE (ACCOUNT|SERIES)'
+    || '|\bPOOL( [IVX0-9]+)?,? (LLC|L\.?P\.?)$'
+    || '|\bFUND( [IVX0-9]+)?(,? (LLC|L\.?P\.?|LTD\.?))?$'
+    || '|\bSPV\b|CO-?INVEST|\bFEEDER\b|\bSERIES [A-Z0-9-]+,? (LLC|L\.?P\.?)$)'
+);
+
+-- Limited liability partnerships in Form D are professional-services firms
+-- raising partner capital (accounting, law, medical practices) or farming and
+-- project partnerships, not startups.
+CREATE OR REPLACE MACRO looks_like_partnership_firm(name) AS
+    regexp_matches(upper(coalesce(name, '')), '\bL\.?L\.?P\.?$');
+
+-- EDGAR uses two-letter codes for US states and letter+digit codes for other
+-- countries and Canadian provinces (e.g. A1 = British Columbia).
+CREATE OR REPLACE MACRO is_us_state(code) AS coalesce(code, '') IN (
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL',
+    'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE',
+    'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD',
+    'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
 );
 
 CREATE OR REPLACE MACRO is_venture_sector(s) AS
@@ -214,18 +233,21 @@ CREATE OR REPLACE MACRO company_snapshot(as_of) AS TABLE
 WITH visible AS (
     SELECT
         * REPLACE (CASE WHEN is_suspect_amount THEN 0 ELSE new_money END AS new_money),
-        CAST(as_of AS DATE)                                      AS snapshot_date
+        CAST(as_of AS DATE)                                      AS snapshot_date,
+        -- Deterministic "latest": ties on known_at break on accession number.
+        strftime(known_at, '%Y%m%d') || accession_number         AS order_key
     FROM raise_event
     WHERE known_at <= CAST(as_of AS DATE)
 ), agg AS (
     SELECT
         cik,
         any_value(snapshot_date)                                 AS snapshot_date,
-        arg_max(entity_name, known_at)                           AS entity_name,
-        arg_max(state, known_at)                                 AS state,
-        mode(industry_group)                                     AS industry_group,
-        sector(mode(industry_group))                             AS sector,
-        is_venture_sector(sector(mode(industry_group)))          AS is_venture_sector,
+        arg_max(entity_name, order_key)                          AS entity_name,
+        arg_max(state, order_key)                                AS state,
+        arg_max(industry_group, order_key)                       AS industry_group,
+        sector(arg_max(industry_group, order_key))               AS sector,
+        is_venture_sector(sector(arg_max(industry_group, order_key)))
+                                                                 AS is_venture_sector,
         min(year_of_inc)                                         AS year_of_inc,
         min(known_at)                                            AS first_filing_at,
         max(known_at) FILTER (WHERE new_money > 0)               AS last_raise_at,
@@ -240,12 +262,12 @@ WITH visible AS (
         count(*) FILTER (
             WHERE new_money > 0 AND known_at > snapshot_date - INTERVAL 24 MONTH)
                                                                  AS n_raises_last_24m,
-        arg_max(new_money, known_at) FILTER (WHERE new_money > 0) AS last_raise_amount,
-        arg_max(total_investors, known_at)                       AS last_total_investors,
+        arg_max(new_money, order_key) FILTER (WHERE new_money > 0) AS last_raise_amount,
+        arg_max(total_investors, order_key)                       AS last_total_investors,
         max(total_investors)                                     AS max_investors,
-        arg_max(revenue_range, known_at)                         AS last_revenue_range,
-        arg_max(offering_remaining, known_at)                    AS last_offering_remaining,
-        arg_max(offering_indefinite, known_at)                   AS last_offering_indefinite
+        arg_max(revenue_range, order_key)                         AS last_revenue_range,
+        arg_max(offering_remaining, order_key)                    AS last_offering_remaining,
+        arg_max(offering_indefinite, order_key)                   AS last_offering_indefinite
     FROM visible
     GROUP BY cik
 )
@@ -262,12 +284,14 @@ SELECT
 FROM agg
 LEFT JOIN edgar_milestone AS m USING (cik);
 
--- Private, venture-sector companies that raised within `active_months` of
--- `as_of`. This is the population the model scores.
+-- Private, US-headquartered, venture-sector companies that raised within
+-- `active_months` of `as_of`. This is the population the model scores.
 CREATE OR REPLACE MACRO venture_universe(as_of, active_months) AS TABLE
 SELECT *
 FROM company_snapshot(as_of)
 WHERE is_venture_sector
+  AND is_us_state(state)
+  AND NOT looks_like_partnership_firm(entity_name)
   AND NOT is_public
   AND NOT is_investment_company
   AND months_since_last_raise <= active_months;

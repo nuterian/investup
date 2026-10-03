@@ -7,7 +7,7 @@ from pathlib import Path
 
 import duckdb
 
-from investup import edgar, ledger, sec
+from investup import backtest, edgar, ledger, sec
 from investup.formd import download, load
 
 DEFAULT_DB = Path("data/investup.duckdb")
@@ -52,6 +52,26 @@ def cmd_stats(args: argparse.Namespace) -> None:
         )
 
 
+def cmd_backtest(args: argparse.Namespace) -> None:
+    con = _connect(args.db)
+    result = backtest.run(con, label=args.label, horizon=args.horizon)
+    backtest.write_report(result, args.out)
+    print(backtest.render_markdown(result).split("## By test date")[0].rstrip())
+    print(f"\nFull report: {args.out}")
+
+
+def cmd_score(args: argparse.Namespace) -> None:
+    con = _connect(args.db)
+    rows = backtest.score_latest(con, label=args.label, horizon=args.horizon, top=args.top)
+    if not rows:
+        print("No companies to score.")
+        return
+    print(f"Scored as of {rows[0][0]}: P({args.label} within {args.horizon} months)\n")
+    for _as_of, cik, name, sector, prob, reason in rows:
+        print(f"{prob:6.1%}  {name[:40]:<40} {sector:<12} CIK {cik}")
+        print(f"        {reason}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="investup")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -73,6 +93,20 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("stats", help="Print yearly ledger coverage")
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("backtest", help="Walk-forward backtest; writes a markdown report")
+    p.add_argument("--db", type=Path, default=DEFAULT_DB)
+    p.add_argument("--label", choices=backtest.LABELS, default="next_round")
+    p.add_argument("--horizon", type=int, default=18, help="Outcome window in months")
+    p.add_argument("--out", type=Path, default=Path("docs/BACKTEST.md"))
+    p.set_defaults(func=cmd_backtest)
+
+    p = sub.add_parser("score", help="Rank today's private companies with the cell model")
+    p.add_argument("--db", type=Path, default=DEFAULT_DB)
+    p.add_argument("--label", choices=backtest.LABELS, default="next_round")
+    p.add_argument("--horizon", type=int, default=18)
+    p.add_argument("--top", type=int, default=25)
+    p.set_defaults(func=cmd_score)
 
     args = parser.parse_args(argv)
     args.func(args)
