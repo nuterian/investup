@@ -6,3 +6,8 @@ __pycache__/
 /data/raw/
 /data/*.duckdb
 /data/*.duckdb.wal
+
+# Site
+/site/node_modules/
+/site/dist/
+/site/public/data/
