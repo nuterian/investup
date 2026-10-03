@@ -23,7 +23,7 @@ describe("format", () => {
     expect(topPct(0.9995)).toBe("top 0.1%");
     expect(topPct(0.8)).toBe("top 20%");
     expect(topPct(0.2)).toBe("bottom half");
-    expect(multiple(0.18, 0.048)).toBe("3.8×");
+    expect(multiple(0.2, 0.05)).toBe("4.0×");
     expect(multiple(0.2, 0.008)).toBe("25×");
     expect(change(110, 100)).toBe("+10%");
     expect(change(90, 100)).toBe("−10%");

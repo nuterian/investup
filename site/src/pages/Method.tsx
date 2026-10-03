@@ -18,7 +18,7 @@ const LABELS: Record<string, { title: string; text: string }> = {
   },
 };
 
-function Record({ label, tr }: { label: string; tr: TrackRecord }) {
+function TrackCard({ label, tr }: { label: string; tr: TrackRecord }) {
   const l = LABELS[label];
   return (
     <Card title={l.title} note={l.text}>
@@ -98,7 +98,7 @@ export function Method() {
       <div className="grid">
         {(["step_up", "went_public", "next_round"] as const).map((label) => {
           const tr = s.track_record[label];
-          return tr ? <Record key={label} label={label} tr={tr} /> : null;
+          return tr ? <TrackCard key={label} label={label} tr={tr} /> : null;
         })}
       </div>
 
