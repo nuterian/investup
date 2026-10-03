@@ -61,3 +61,14 @@ def test_monotone_pools_out_of_order_bands():
     out = export.monotone(bands)
     assert [(b["low"], b["high"], b["n"]) for b in out] == [(0.0, 0.9, 90), (0.9, 1.0, 10)]
     assert out[1]["observed"] == (0.2 * 9 + 0.1) / 10
+
+
+def test_check_flags_stale_or_thin_exports(con, sample_quarters, tmp_path):
+    load.load_dir(con, sample_quarters)
+    out = tmp_path / "site"
+    export.export(con, out, model="cell", details_since=dt.date(2015, 1, 1), backtests=tmp_path)
+    problems = export.check(out)
+    assert any("days ago" in p for p in problems)  # sample data ends in 2019
+    assert any("scored companies" in p for p in problems)
+    assert any("track record" in p for p in problems)
+    assert export.check(tmp_path / "missing") != []

@@ -29,6 +29,11 @@ def last_complete_quarter(today: dt.date | None = None) -> tuple[int, int]:
     return (today.year, q - 1) if q > 1 else (today.year - 1, 4)
 
 
+def current_quarter(today: dt.date | None = None) -> tuple[int, int]:
+    today = today or dt.date.today()
+    return today.year, (today.month - 1) // 3 + 1
+
+
 def quarter_range(start: tuple[int, int], end: tuple[int, int]) -> list[tuple[int, int]]:
     out = []
     y, q = start
@@ -48,7 +53,7 @@ def user_agent() -> str:
     return ua
 
 
-def get(url: str) -> bytes:
+def get(url: str, delay: float = 0.2) -> bytes:
     req = urllib.request.Request(
         url, headers={"User-Agent": user_agent(), "Accept-Encoding": "identity"}
     )
@@ -56,4 +61,4 @@ def get(url: str) -> bytes:
         with urllib.request.urlopen(req, timeout=300) as resp:
             return resp.read()
     finally:
-        time.sleep(0.2)  # well under the SEC's 10 req/s limit
+        time.sleep(delay)  # the SEC allows at most 10 requests/second

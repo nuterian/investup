@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Company, SearchEntry } from "./data";
 import { fromColumnar, shardOf } from "./data";
-import { change, money, multiple, pct, quarterLabel, topPct } from "./format";
+import { change, date, money, multiple, pct, quarterLabel, topPct } from "./format";
 import { applyFilters } from "./pages/Explore";
 import { search, tokens } from "./search";
 
@@ -29,6 +29,8 @@ describe("format", () => {
     expect(change(110, 100)).toBe("+10%");
     expect(change(90, 100)).toBe("−10%");
     expect(quarterLabel("2026-06-30")).toBe("Q2 2026");
+    expect(date("2026-10-02")).toBe("Oct 2026");
+    expect(date("2026-10-02", true)).toBe("2 Oct 2026");
   });
 });
 

@@ -514,3 +514,32 @@ def export(
     detail = detail_shards(con, details_since, end, shards)
     sizes["c/*.json"] = sum(_write(out / "c" / f"{k}.json", v) for k, v in detail.items())
     return sizes
+
+
+def check(out: Path, *, max_age_days: int = 10, min_companies: int = 10_000) -> list[str]:
+    """Problems that should stop a deploy (empty list = OK)."""
+    problems = []
+    try:
+        summary = json.loads((out / "summary.json").read_text())
+        universe = json.loads((out / "universe.json").read_text())
+    except (OSError, ValueError) as e:
+        return [f"Can't read exported files: {e}"]
+    age = (dt.date.today() - dt.date.fromisoformat(summary["data_end"])).days
+    if age > max_age_days:
+        problems.append(
+            f"Newest filing is from {summary['data_end']} ({age} days ago); the live Form D "
+            "ingest may have stopped working."
+        )
+    if len(universe["rows"]) < min_companies:
+        problems.append(
+            f"Only {len(universe['rows']):,} scored companies (expected {min_companies:,}+)."
+        )
+    if not summary["quarter"]["this"]["companies"]:
+        problems.append("No raises in the latest quarter window.")
+    if not summary.get("track_record"):
+        problems.append("No backtest track record (docs/backtests/*.json missing?).")
+    shards = summary.get("shards", SHARDS)
+    found = len(list((out / "c").glob("*.json")))
+    if found < shards * 0.9:
+        problems.append(f"Only {found} of {shards} company detail files were written.")
+    return problems

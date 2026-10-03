@@ -1,16 +1,22 @@
 name: Site
 
-# Rebuilds the data from the SEC and deploys the static site to GitHub Pages.
-# Needs: repository secret INVESTUP_USER_AGENT ("Name email@example.com") and
-# Settings → Pages → Source: GitHub Actions.
+# Daily: pull new SEC filings, rebuild the data, re-score every company and
+# deploy the static site to GitHub Pages.
+#
+# One-time setup:
+#   - Repository secret INVESTUP_USER_AGENT, e.g. "Your Name you@example.com"
+#     (the SEC requires a contact in the User-Agent).
+#   - Settings -> Pages -> Source: "GitHub Actions".
+#
+# If any step fails, nothing is deployed and the last good site stays up.
 
 on:
   schedule:
-    - cron: "17 6 12 * *" # monthly; picks up each new quarterly Form D data set
+    - cron: "23 7 * * *" # 07:23 UTC, after EDGAR's nightly index update
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # keep-alive commit (see the last build step)
   pages: write
   id-token: write
 
@@ -21,7 +27,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # The first run fetches every Form D filed since the last quarterly data set
+    # (~1 hour at the SEC's rate limit). Later runs take ~30 minutes.
+    timeout-minutes: 180
     env:
       INVESTUP_USER_AGENT: ${{ secrets.INVESTUP_USER_AGENT }}
     steps:
@@ -33,8 +41,8 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
 
-      # Raw SEC files only change for new quarters; keep them between runs.
-      - uses: actions/cache@v4
+      # Raw SEC files (~500 MB) only grow; keep them between runs.
+      - uses: actions/cache/restore@v4
         with:
           path: data/raw
           key: sec-raw-${{ github.run_id }}
@@ -42,8 +50,16 @@ jobs:
 
       - run: uv sync --locked --extra model
       - run: uv run investup download
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data/raw
+          key: sec-raw-${{ github.run_id }}
+
       - run: uv run investup load
       - run: uv run investup export --out site/public/data
+      - run: uv run investup check --out site/public/data
 
       - working-directory: site
         run: |
@@ -54,6 +70,19 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist
+
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity. Push an empty commit when the repo has been quiet for 45.
+      - name: Keep the schedule alive
+        if: github.event_name == 'schedule'
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 45 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: keep the daily site refresh enabled"
+            git push
+          fi
 
   deploy:
     needs: build

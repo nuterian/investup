@@ -39,11 +39,12 @@ export function multiple(x: number | null | undefined, base: number | null | und
   return m >= 10 ? `${Math.round(m)}×` : `${m.toFixed(1)}×`;
 }
 
-export function date(d: string | null | undefined): string {
+export function date(d: string | null | undefined, withDay = false): string {
   if (!d) return "–";
-  const [y, m] = d.split("-");
+  const [y, m, day] = d.split("-");
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${months[Number(m) - 1]} ${y}`;
+  const month = months[Number(m) - 1];
+  return withDay ? `${Number(day)} ${month} ${y}` : `${month} ${y}`;
 }
 
 export function quarterLabel(d: string): string {

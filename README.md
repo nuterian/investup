@@ -30,13 +30,14 @@ uv sync --extra model   # --extra model adds LightGBM; leave it out for the Duck
 # The SEC requires a contact in the User-Agent for automated downloads.
 export INVESTUP_USER_AGENT="Your Name you@example.com"
 
-uv run investup download   # Form D data sets + EDGAR indexes, 2008 to now (~430 MB)
+uv run investup download   # Form D data sets, EDGAR indexes and filings since the last data set
 uv run investup load       # -> data/investup.duckdb (~2 minutes)
 uv run investup stats      # yearly coverage summary
 uv run investup backtest   # walk-forward backtest -> docs/backtests/<label>.md
 uv run investup score      # rank today's private companies, with reasons
 uv run investup digest     # recent filers ranked by bigger-round and IPO odds -> docs/digests/
 uv run investup export     # JSON files for the static site -> site/public/data/
+uv run investup check      # sanity-check the export before deploying
 ```
 
 ### The site
@@ -51,10 +52,32 @@ INVESTUP_USER_AGENT="Your Name you@example.com" ./scripts/dev.sh
 [`site/`](site/) is a static Vite + React + TypeScript app over the exported files: a
 dashboard, company pages, a screener and a methodology page. See
 [`site/README.md`](site/README.md) and [`docs/FRONTEND_PLAN.md`](docs/FRONTEND_PLAN.md).
-The [`Site` workflow](.github/workflows/site.yml) rebuilds the data monthly and deploys to
-GitHub Pages. To turn it on:
+### Keeping it fresh
+
+The SEC publishes Form D data sets once a quarter, a few weeks after it ends, but each
+filing is on EDGAR the day it's filed. `investup download` covers both: the quarterly
+data sets, plus every Form D and D/A filed since the latest one (`--source live`,
+cached under `data/raw/formd-live/`). When the official data set for a quarter comes
+out, it replaces that quarter's live filings automatically. The site is never more
+than a day behind.
+
+Two GitHub Actions workflows keep the public site current:
+
+| Workflow | When | What |
+|---|---|---|
+| [`Site`](.github/workflows/site.yml) | Daily, 07:23 UTC | Download new filings, load, re-score, `investup check`, build and deploy to GitHub Pages. If any step fails, nothing is deployed and the last good site stays up. |
+| [`Backtests`](.github/workflows/backtests.yml) | Quarterly | Re-run the walk-forward backtests and open a pull request with the updated reports. The site's hit rates come from these. |
+
+One-time setup, after merging to the default branch (schedules only run there):
 1. Add a repository secret `INVESTUP_USER_AGENT`, e.g. `Your Name you@example.com`.
 2. Set Settings → Pages → Source to "GitHub Actions".
+3. Allow Settings → Actions → General → "Allow GitHub Actions to create and approve pull
+   requests" (for the backtest PRs).
+4. Run the `Site` workflow once by hand. The first run fetches every filing since the
+   last data set and takes about an hour; later runs take about 30 minutes.
+
+GitHub pauses scheduled workflows after 60 days without repository activity, so the
+daily run pushes an empty commit if the repo has been quiet for 45 days.
 
 The downloader finds each quarter's ZIP by reading the SEC's
 [Form D data sets page](https://www.sec.gov/data-research/sec-markets-data/form-d-data-sets).

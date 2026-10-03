@@ -394,8 +394,13 @@ baselines.
 - [x] Static site source (`site/`): dashboard, company page, screener with CSV export,
       methodology page, plus the GitHub Pages workflow. No API server; see
       `docs/FRONTEND_PLAN.md`.
-- [ ] Install, type-check, test and build the site, then enable Pages (needs
-      registry.npmjs.org reachable from the build environment)
+- [x] Site installed, type-checked, tested and built, and checked in a headless browser
+      against real data
+- [x] Daily freshness: live ingest of every Form D filed since the last quarterly data set
+      (EDGAR submission text, parsed into the same staging tables), current-quarter EDGAR
+      index refresh, `investup check` before deploy, daily `Site` workflow with keep-alive,
+      quarterly `Backtests` workflow that opens a PR
+- [ ] Merge to the default branch and do the one-time GitHub setup (see README)
 - [ ] Form C as its own funding source, entity resolution across renamed CIKs,
       data-quality report
 

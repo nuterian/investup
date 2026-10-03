@@ -10,7 +10,7 @@ import {
   baseRate,
 } from "../components/Bits";
 import { type Company, type Lists, type Summary, loadLists, loadSummary, loadUniverse } from "../data";
-import { change, money, pct, quarterLabel } from "../format";
+import { change, date, money, pct, quarterLabel } from "../format";
 import { href } from "../router";
 import { useAsync } from "../useAsync";
 import { useWatchlist } from "../watchlist";
@@ -62,7 +62,7 @@ function Dashboard({
     <div className="stack">
       <section className="hero">
         <p className="muted">
-          {quarterLabel(summary.data_end)} · SEC filings through {summary.data_end}
+          Last 3 months · SEC filings through {date(summary.data_end, true)}
         </p>
         <div className="stats">
           <Stat
@@ -131,7 +131,7 @@ function Dashboard({
           </a>
         </Card>
 
-        <Card title="Movers" note="Biggest rise in bigger-round odds since last quarter.">
+        <Card title="Movers" note="Biggest rise in bigger-round odds over the last 3 months.">
           <ul className="rows">
             {pick(lists.movers).slice(0, 8).map((c) => (
               <Row
@@ -162,7 +162,7 @@ function Dashboard({
           </a>
         </Card>
 
-        <Card title="Biggest raises this quarter">
+        <Card title="Biggest raises, last 3 months">
           <ul className="rows">
             {lists.biggest.slice(0, 8).map(({ cik, new_money }) => {
               const c = universe.get(cik);
@@ -173,9 +173,9 @@ function Dashboard({
           </ul>
         </Card>
 
-        <Card title="New IPO filings" note="Private companies that filed an S-1/F-1 this quarter.">
+        <Card title="New IPO filings" note="Private companies that filed an S-1/F-1 in the last 3 months.">
           {lists.ipo_pipeline.length === 0 ? (
-            <p className="muted">None this quarter.</p>
+            <p className="muted">None in the last 3 months.</p>
           ) : (
             <ul className="rows">
               {lists.ipo_pipeline.slice(0, 8).map((r) => (

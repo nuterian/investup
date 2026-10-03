@@ -93,13 +93,20 @@ def ensure_staging(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def download_range(
-    start: tuple[int, int], end: tuple[int, int], dest: Path, *, force: bool = False
+    start: tuple[int, int],
+    end: tuple[int, int],
+    dest: Path,
+    *,
+    force: bool = False,
+    refresh: tuple[int, int] | None = None,
 ) -> list[Path]:
+    """Download quarterly master indexes. `refresh` names a quarter to re-download
+    even if present: the current quarter's index grows every night."""
     dest.mkdir(parents=True, exist_ok=True)
     paths = []
     for year, quarter in quarter_range(start, end):
         target = dest / f"{year}q{quarter}_master.gz"
-        if target.exists() and not force:
+        if target.exists() and not force and (year, quarter) != refresh:
             paths.append(target)
             continue
         tmp = target.with_suffix(".part")

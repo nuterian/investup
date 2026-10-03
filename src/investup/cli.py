@@ -9,11 +9,11 @@ from pathlib import Path
 import duckdb
 
 from investup import backtest, digest, edgar, export, ledger, sec
-from investup.formd import download, load
+from investup.formd import download, live, load
 
 DEFAULT_DB = Path("data/investup.duckdb")
 DEFAULT_RAW = Path("data/raw")
-SOURCES = ("formd", "edgar")
+SOURCES = ("formd", "edgar", "live")
 
 
 def _connect(path: Path) -> duckdb.DuckDBPyConnection:
@@ -27,7 +27,13 @@ def cmd_download(args: argparse.Namespace) -> None:
     if args.source in ("formd", "all"):
         download.download_range(start, end, args.raw / "formd", force=args.force)
     if args.source in ("edgar", "all"):
-        edgar.download_range(start, end, args.raw / "edgar", force=args.force)
+        # EDGAR's index for the current quarter is updated nightly; always refresh it.
+        now = sec.current_quarter()
+        edgar_end = sec.parse_quarter(args.end) if args.end else now
+        edgar.download_range(start, edgar_end, args.raw / "edgar", force=args.force, refresh=now)
+    if args.source in ("live", "all"):
+        n = live.fetch(args.raw / "formd", args.raw / "edgar", args.raw / "formd-live")
+        print(f"live: fetched {n:,} new Form D filings")
 
 
 def cmd_load(args: argparse.Namespace) -> None:
@@ -36,6 +42,9 @@ def cmd_load(args: argparse.Namespace) -> None:
         load.load_dir(con, args.raw / "formd")
     if args.source in ("edgar", "all"):
         edgar.load_dir(con, args.raw / "edgar")
+    if args.source in ("live", "all"):
+        counts = live.load(con, args.raw / "formd", args.raw / "edgar", args.raw / "formd-live")
+        print("live: " + ", ".join(f"{k}={v:,}" for k, v in counts.items()))
     ledger.build(con)
 
 
@@ -99,6 +108,15 @@ def cmd_export(args: argparse.Namespace) -> None:
     print(f"\nSite data written to {args.out}")
 
 
+def cmd_check(args: argparse.Namespace) -> None:
+    problems = export.check(args.out, max_age_days=args.max_age_days)
+    for p in problems:
+        print(f"FAIL: {p}")
+    if problems:
+        raise SystemExit(1)
+    print(f"OK: {args.out} looks good to deploy")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="investup")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -149,6 +167,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--model", choices=("gbm", "cell"), help="Default: gbm if installed")
     p.add_argument("--shards", type=int, default=export.SHARDS, help="Company detail files")
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("check", help="Sanity-check exported site data before deploying")
+    p.add_argument("--out", type=Path, default=Path("site/public/data"))
+    p.add_argument("--max-age-days", type=int, default=10)
+    p.set_defaults(func=cmd_check)
 
     args = parser.parse_args(argv)
     args.func(args)
