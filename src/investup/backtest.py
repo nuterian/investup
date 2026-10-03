@@ -27,7 +27,7 @@ import duckdb
 
 from investup import features, gbm
 
-LABELS = ("next_round", "raised_again", "went_public")
+LABELS = ("step_up", "next_round", "raised_again", "went_public")
 ACTIVE_MONTHS = 36
 SMOOTHING = 30.0
 SQL_MODELS = ("base_rate", "recency", "cell")
@@ -203,7 +203,7 @@ class BacktestResult:
 def run(
     con: duckdb.DuckDBPyConnection,
     *,
-    label: str = "next_round",
+    label: str = "step_up",
     horizon: int = 18,
     first_snapshot: dt.date = dt.date(2011, 1, 1),
     first_test: dt.date = dt.date(2016, 1, 1),
@@ -234,17 +234,22 @@ def run(
     return result
 
 
-def score_latest(
+def score_current(
     con: duckdb.DuckDBPyConnection,
     *,
-    label: str = "next_round",
+    label: str = "step_up",
     horizon: int = 18,
-    top: int = 25,
     model: str | None = None,
-) -> tuple[str, list[tuple]]:
-    """Score every company in today's universe with a model trained on all
-    snapshots whose outcomes are already known. Uses `gbm` when installed."""
+    table: str | None = None,
+) -> tuple[str, str]:
+    """Score every company in the current universe with a model trained on all
+    snapshots whose outcomes are already known. Uses `gbm` when installed.
+
+    Writes (as_of, cik, entity_name, sector, prob, score, reason) to a temp table
+    and returns (model, table name).
+    """
     model = model or ("gbm" if gbm.available() else "cell")
+    table = table or f"current_{label}"
     features.build(con)
     end = data_end(con)
     train_dates = [
@@ -260,14 +265,35 @@ def score_latest(
     )
     if model == "gbm":
         gbm.fit_and_score(con)
-    rows = con.execute(
-        """
-        SELECT as_of, cik, entity_name, sector, prob, reason
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE {table} AS
+        SELECT as_of, cik, entity_name, sector, prob, score, reason
         FROM scored WHERE model = ?
+        """,
+        [model],
+    )
+    return model, table
+
+
+def score_latest(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    label: str = "step_up",
+    horizon: int = 18,
+    top: int = 25,
+    model: str | None = None,
+) -> tuple[str, list[tuple]]:
+    """Top `top` companies in the current universe for `label`."""
+    model, table = score_current(con, label=label, horizon=horizon, model=model)
+    rows = con.execute(
+        f"""
+        SELECT as_of, cik, entity_name, sector, prob, reason
+        FROM {table}
         ORDER BY score DESC, hash(cik)
         LIMIT ?
         """,
-        [model, top],
+        [top],
     ).fetchall()
     return model, rows
 
@@ -282,6 +308,8 @@ def _num(x: float | None, digits: int = 3) -> str:
 
 def render_markdown(result: BacktestResult) -> str:
     label_text = {
+        "step_up": "raise a **bigger round**: a new round of at least $5M and at least "
+        "1.5x their largest round so far",
         "next_round": "start a **new round** and report new money",
         "raised_again": "report **any new money** (new round or more closings of an open one)",
         "went_public": "**go public** (priced IPO prospectus or first periodic report)",

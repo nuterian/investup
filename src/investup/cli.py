@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 from pathlib import Path
 
 import duckdb
 
-from investup import backtest, edgar, ledger, sec
+from investup import backtest, digest, edgar, ledger, sec
 from investup.formd import download, load
 
 DEFAULT_DB = Path("data/investup.duckdb")
@@ -55,9 +56,10 @@ def cmd_stats(args: argparse.Namespace) -> None:
 def cmd_backtest(args: argparse.Namespace) -> None:
     con = _connect(args.db)
     result = backtest.run(con, label=args.label, horizon=args.horizon)
-    backtest.write_report(result, args.out)
+    out = args.out or Path("docs/backtests") / f"{args.label}.md"
+    backtest.write_report(result, out)
     print(backtest.render_markdown(result).split("## By test date")[0].rstrip())
-    print(f"\nFull report: {args.out}")
+    print(f"\nFull report: {out}")
 
 
 def cmd_score(args: argparse.Namespace) -> None:
@@ -74,6 +76,19 @@ def cmd_score(args: argparse.Namespace) -> None:
     for _as_of, cik, name, sector, prob, reason in rows:
         print(f"{prob:6.1%}  {name[:40]:<40} {sector:<12} CIK {cik}")
         print(f"        {reason}")
+
+
+def cmd_digest(args: argparse.Namespace) -> None:
+    con = _connect(args.db)
+    since = dt.date.fromisoformat(args.since) if args.since else None
+    d = digest.build(con, since=since, top=args.top)
+    out = args.out or Path("docs/digests") / f"{d.end}.md"
+    digest.write(d, out)
+    print(f"{d.universe_filers:,} companies filed between {d.since} and {d.end}.")
+    for _cik, name, _state, sector, _filed, _money, p_step, p_ipo, *_ in d.step_up[:10]:
+        p_ipo_text = "  –  " if p_ipo is None else f"{p_ipo:5.1%}"
+        print(f"  bigger round {p_step:5.1%} · IPO {p_ipo_text}  {name[:45]} ({sector})")
+    print(f"\nFull digest: {out}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -100,18 +115,25 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("backtest", help="Walk-forward backtest; writes a markdown report")
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
-    p.add_argument("--label", choices=backtest.LABELS, default="next_round")
+    p.add_argument("--label", choices=backtest.LABELS, default="step_up")
     p.add_argument("--horizon", type=int, default=18, help="Outcome window in months")
-    p.add_argument("--out", type=Path, default=Path("docs/BACKTEST.md"))
+    p.add_argument("--out", type=Path, help="Default: docs/backtests/<label>.md")
     p.set_defaults(func=cmd_backtest)
 
     p = sub.add_parser("score", help="Rank today's private companies, with reasons")
     p.add_argument("--model", choices=("gbm", "cell"), help="Default: gbm if installed")
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
-    p.add_argument("--label", choices=backtest.LABELS, default="next_round")
+    p.add_argument("--label", choices=backtest.LABELS, default="step_up")
     p.add_argument("--horizon", type=int, default=18)
     p.add_argument("--top", type=int, default=25)
     p.set_defaults(func=cmd_score)
+
+    p = sub.add_parser("digest", help="Recent filers ranked by bigger-round and IPO odds")
+    p.add_argument("--db", type=Path, default=DEFAULT_DB)
+    p.add_argument("--since", help="Start of window, YYYY-MM-DD (default: 91 days before data end)")
+    p.add_argument("--top", type=int, default=25)
+    p.add_argument("--out", type=Path, help="Default: docs/digests/<data end>.md")
+    p.set_defaults(func=cmd_digest)
 
     args = parser.parse_args(argv)
     args.func(args)

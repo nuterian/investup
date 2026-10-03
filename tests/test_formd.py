@@ -243,3 +243,23 @@ def test_partnership_firm_names(con):
     check = "SELECT looks_like_partnership_firm(?)"
     assert con.execute(check, ["DELOITTE & TOUCHE LLP"]).fetchone()[0] is True
     assert con.execute(check, ["Allpoint Inc"]).fetchone()[0] is False
+
+
+def test_step_up_label(con, sample_quarters):
+    # Acme's largest round known on 2016-12-31 is $2M (the 2017 amendment isn't
+    # public yet). Its 2019 round of $5M is >= max(1.5 x $2M, $5M).
+    build(con, sample_quarters)
+    long = dict(
+        con.execute("SELECT cik, step_up FROM step_up_label(DATE '2016-12-31', 30)").fetchall()
+    )
+    assert long == {1001: True, 3003: False}
+    # The 2019 round falls outside an 18-month window.
+    short = dict(
+        con.execute("SELECT cik, step_up FROM step_up_label(DATE '2016-12-31', 18)").fetchall()
+    )
+    assert short[1001] is False
+    # Seen from 2017-06-30 the largest prior round is $3.5M; 1.5x that is $5.25M > $5M.
+    later = dict(
+        con.execute("SELECT cik, step_up FROM step_up_label(DATE '2017-06-30', 30)").fetchall()
+    )
+    assert later[1001] is False

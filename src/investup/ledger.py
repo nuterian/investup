@@ -334,6 +334,40 @@ SELECT
 FROM company_snapshot(as_of) AS snap
 LEFT JOIN future USING (cik);
 
+-- Size of each round (offering chain): new money reported on it by a cutoff date.
+CREATE OR REPLACE MACRO rounds_known_by(cutoff) AS TABLE
+SELECT
+    cik,
+    offering_key,
+    min(offering_started_at)                                     AS started_at,
+    sum(CASE WHEN is_suspect_amount THEN 0 ELSE new_money END)   AS round_size
+FROM raise_event
+WHERE known_at <= CAST(cutoff AS DATE)
+GROUP BY cik, offering_key;
+
+-- Step-up label: a new round that started in (as_of, as_of + horizon], reached
+-- at least $5M and at least 1.5x the company's largest round known on `as_of`.
+-- This separates "graduated to a bigger round" from "filed again".
+CREATE OR REPLACE MACRO step_up_label(as_of, horizon_months) AS TABLE
+WITH prior AS (
+    SELECT cik, max(round_size) AS prior_max
+    FROM rounds_known_by(as_of)
+    GROUP BY cik
+), fut AS (
+    SELECT cik, max(round_size) AS next_max
+    FROM rounds_known_by(
+        CAST(as_of AS DATE) + to_months(CAST(horizon_months AS INTEGER)))
+    WHERE started_at > CAST(as_of AS DATE)
+    GROUP BY cik
+)
+SELECT
+    snap.cik,
+    coalesce(fut.next_max, 0) >= greatest(1.5 * coalesce(prior.prior_max, 0), 5e6)
+                                                                 AS step_up
+FROM company_snapshot(as_of) AS snap
+LEFT JOIN prior USING (cik)
+LEFT JOIN fut USING (cik);
+
 -- Exit label: the company went public (IPO prospectus or first periodic report)
 -- in (as_of, as_of + horizon].
 CREATE OR REPLACE MACRO went_public_label(as_of, horizon_months) AS TABLE

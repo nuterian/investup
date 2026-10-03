@@ -56,6 +56,10 @@ WITH u AS (
      AND other.first_seen_at < mine.first_seen_at
     LEFT JOIN edgar_milestone AS m ON m.cik = other.cik
     GROUP BY mine.cik
+), largest_round AS (
+    SELECT cik, max(round_size) AS largest_round
+    FROM rounds_known_by(as_of)
+    GROUP BY cik
 ), recent AS (
     SELECT *, CAST(as_of AS DATE) AS d
     FROM raise_event
@@ -87,6 +91,7 @@ SELECT
     ln(1 + u.raised_last_12m)                                    AS log_raised_last_12m,
     ln(1 + u.raised_last_24m)                                    AS log_raised_last_24m,
     ln(1 + coalesce(u.last_raise_amount, 0))                     AS log_last_raise_amount,
+    ln(1 + coalesce(lr.largest_round, 0))                        AS log_largest_round,
     u.last_total_investors,
     u.max_investors,
     coalesce(u.last_offering_indefinite OR u.last_offering_remaining > 0, false)
@@ -104,6 +109,7 @@ SELECT
 FROM u
 LEFT JOIN team USING (cik)
 LEFT JOIN track USING (cik)
+LEFT JOIN largest_round AS lr USING (cik)
 LEFT JOIN sector_heat AS sh USING (sector);
 
 -- Features joined to every outcome label we track.
@@ -111,10 +117,12 @@ CREATE OR REPLACE MACRO labeled_features(as_of, active_months, horizon_months) A
 SELECT
     f.*,
     nr.next_round,
+    su.step_up,
     ra.raised_again,
     wp.went_public
 FROM features(as_of, active_months) AS f
 JOIN next_round_label(as_of, horizon_months) AS nr USING (cik)
+JOIN step_up_label(as_of, horizon_months) AS su USING (cik)
 JOIN raised_again_label(as_of, horizon_months) AS ra USING (cik)
 JOIN went_public_label(as_of, horizon_months) AS wp USING (cik);
 """
