@@ -59,3 +59,16 @@ def test_calibration_bins():
     assert [n for _, _, n, _, _ in table[:4]] == [25, 25, 25, 25]
     assert table[0][4] == 0.0 and table[3][4] == 1.0
     assert table[-1][2] == 3  # top 10% of the top bin
+
+
+def test_months_after_clamps_to_month_end():
+    assert backtest.months_after(dt.date(2026, 5, 31), -3) == dt.date(2026, 2, 28)
+    assert backtest.months_after(dt.date(2024, 3, 31), -1) == dt.date(2024, 2, 29)
+
+
+def test_hit_rates_by_rank():
+    ranks = [("m", i / 1000, int(i >= 990)) for i in range(1000)]
+    bands = {(lo, hi): (n, obs) for lo, hi, n, obs in backtest.hit_rates_by_rank(ranks, "m")}
+    assert bands[(0.0, 0.5)] == (500, 0.0)
+    assert bands[(0.99, 0.999)] == (9, 1.0)
+    assert bands[(0.999, 1.0)] == (1, 1.0)

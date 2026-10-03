@@ -6,6 +6,12 @@ the same ``scored`` table, so the backtest compares everything like for like.
 
 Each score comes with the features that pushed it up most, taken from
 LightGBM's built-in SHAP contributions (``pred_contrib=True``).
+
+Calibration: boosted trees trained on overlapping snapshots are over-confident
+at the top, and base rates drift over time. We hold out the most recent
+training snapshots, fit the model on the rest, and fit a Platt correction
+(logistic on the raw score) to the held-out predictions. The final model is
+trained on all training rows and its raw scores go through that correction.
 """
 
 from __future__ import annotations
@@ -90,6 +96,7 @@ PARAMS = {
     "verbose": -1,
 }
 NUM_ROUNDS = 300
+CALIBRATION_SNAPSHOTS = 2  # most recent training snapshots held out for calibration
 
 
 def available() -> bool:
@@ -101,7 +108,9 @@ def _matrix(con: duckdb.DuckDBPyConnection, table: str, categories: dict[str, li
         [f"CAST({c} AS DOUBLE) AS {c}" for c in NUMERIC]
         + [f"{c}::VARCHAR AS {c}" for c in CATEGORICAL]
     )
-    data = con.execute(f"SELECT {cols}, y FROM {table}").fetchnumpy()
+    data = con.execute(
+        f"SELECT {cols}, y, date_diff('day', DATE '1970-01-01', as_of) AS as_of_day FROM {table}"
+    ).fetchnumpy()
     columns = []
     for c in NUMERIC:
         col = data[c]
@@ -117,7 +126,49 @@ def _matrix(con: duckdb.DuckDBPyConnection, table: str, categories: dict[str, li
         columns.append(np.array([index.get(v, -1) for v in values], dtype=float))
     y = data["y"]
     y = np.ma.filled(y, 0) if np.ma.isMaskedArray(y) else y
-    return np.column_stack(columns), np.asarray(y, dtype=float)
+    return np.column_stack(columns), np.asarray(y, dtype=float), np.asarray(data["as_of_day"])
+
+
+def _sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-z))
+
+
+def platt_fit(raw: np.ndarray, y: np.ndarray, iters: int = 50) -> tuple[float, float]:
+    """Fit p = sigmoid(a * raw + b) by Newton's method on log loss."""
+    a, b = 1.0, 0.0
+    for _ in range(iters):
+        p = _sigmoid(a * raw + b)
+        g = p - y
+        w = p * (1 - p)
+        grad = np.array([np.dot(g, raw), g.sum()])
+        hess = np.array(
+            [[np.dot(w, raw * raw), np.dot(w, raw)], [np.dot(w, raw), w.sum()]]
+        ) + 1e-6 * np.eye(2)
+        step = np.linalg.solve(hess, grad)
+        a, b = a - step[0], b - step[1]
+        if np.abs(step).max() < 1e-8:
+            break
+    return float(a), float(b)
+
+
+def _train(x, y, cat_idx):
+    dataset = lgb.Dataset(
+        x, y, feature_name=list(FEATURES), categorical_feature=cat_idx, free_raw_data=False
+    )
+    return lgb.train(PARAMS, dataset, num_boost_round=NUM_ROUNDS)
+
+
+def _calibrator(x, y, days, cat_idx) -> tuple[float, float]:
+    """Platt parameters from a time-held-out fit, or identity if there isn't enough data."""
+    snapshots = np.unique(days)
+    if len(snapshots) <= CALIBRATION_SNAPSHOTS:
+        return 1.0, 0.0
+    cutoff = snapshots[-CALIBRATION_SNAPSHOTS]
+    fit, hold = days < cutoff, days >= cutoff
+    if y[hold].sum() < 10 or y[fit].sum() < 10:
+        return 1.0, 0.0
+    booster = _train(x[fit], y[fit], cat_idx)
+    return platt_fit(booster.predict(x[hold], raw_score=True), y[hold])
 
 
 def _categories(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, list[str]]:
@@ -162,19 +213,13 @@ def fit_and_score(con: duckdb.DuckDBPyConnection, model: str = "gbm") -> list[tu
     if not available():
         raise RuntimeError("LightGBM isn't installed; run `uv sync --extra model`.")
     categories = _categories(con, "train")
-    x_train, y_train = _matrix(con, "train", categories)
-    x_test, _ = _matrix(con, "test", categories)
+    x_train, y_train, days = _matrix(con, "train", categories)
+    x_test, _, _ = _matrix(con, "test", categories)
 
     cat_idx = [FEATURES.index(c) for c in CATEGORICAL]
-    dataset = lgb.Dataset(
-        x_train,
-        y_train,
-        feature_name=list(FEATURES),
-        categorical_feature=cat_idx,
-        free_raw_data=False,
-    )
-    booster = lgb.train(PARAMS, dataset, num_boost_round=NUM_ROUNDS)
-    prob = booster.predict(x_test)
+    a, b = _calibrator(x_train, y_train, days, cat_idx)
+    booster = _train(x_train, y_train, cat_idx)
+    prob = _sigmoid(a * booster.predict(x_test, raw_score=True) + b)
     contrib = booster.predict(x_test, pred_contrib=True)
 
     meta = con.execute("SELECT as_of, cik, entity_name, sector, y FROM test").fetchall()

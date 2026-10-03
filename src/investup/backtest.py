@@ -19,7 +19,9 @@ Models (all fitted in DuckDB, no ML dependencies):
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,8 +65,10 @@ END
 
 
 def months_after(d: dt.date, months: int) -> dt.date:
+    """Shift by whole months (negative goes back), clamping to the month's last day."""
     y, m = divmod(d.month - 1 + months, 12)
-    return dt.date(d.year + y, m + 1, d.day)
+    year, month = d.year + y, m + 1
+    return dt.date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
 
 
 def data_end(con: duckdb.DuckDBPyConnection) -> dt.date:
@@ -200,6 +204,8 @@ class BacktestResult:
     importance: list[tuple[str, float]] = field(default_factory=list)
     # (model, prob, y) for every scored test row, pooled across test dates.
     predictions: list[tuple[str, float, int]] = field(default_factory=list)
+    # (model, within-date percentile of score, y), pooled across test dates.
+    ranks: list[tuple[str, float, int]] = field(default_factory=list)
 
 
 def run(
@@ -236,6 +242,12 @@ def run(
         result.predictions += con.execute(
             "SELECT model, prob, y FROM scored WHERE prob IS NOT NULL AND model <> 'base_rate'"
         ).fetchall()
+        result.ranks += con.execute(
+            """
+            SELECT model, percent_rank() OVER (PARTITION BY model ORDER BY score, hash(cik)), y
+            FROM scored WHERE model <> 'base_rate'
+            """
+        ).fetchall()
     return result
 
 
@@ -246,9 +258,11 @@ def score_current(
     horizon: int = 18,
     model: str | None = None,
     table: str | None = None,
+    as_of: dt.date | None = None,
 ) -> tuple[str, str]:
-    """Score every company in the current universe with a model trained on all
-    snapshots whose outcomes are already known. Uses `gbm` when installed.
+    """Score every company in the universe on `as_of` (default: latest data) with
+    a model trained on all snapshots whose outcomes were known by then. Uses `gbm`
+    when installed.
 
     Writes (as_of, cik, entity_name, sector, prob, score, reason) to a temp table
     and returns (model, table name).
@@ -256,7 +270,7 @@ def score_current(
     model = model or ("gbm" if gbm.available() else "cell")
     table = table or f"current_{label}"
     features.build(con)
-    end = data_end(con)
+    end = as_of or data_end(con)
     train_dates = [
         d for d in snapshot_dates(dt.date(2011, 1, 1), end, 6) if months_after(d, horizon) <= end
     ]
@@ -331,6 +345,30 @@ def calibration(
         out.append(
             (ps[0], ps[-1], len(tail), sum(ps) / len(ps), sum(y for _, y in tail) / len(tail))
         )
+    return out
+
+
+# Percentile bands (by within-date rank) reported as historical hit rates.
+RANK_BANDS = (
+    (0.0, 0.5),
+    (0.5, 0.75),
+    (0.75, 0.9),
+    (0.9, 0.95),
+    (0.95, 0.99),
+    (0.99, 0.999),
+    (0.999, 1.0001),
+)
+
+
+def hit_rates_by_rank(
+    ranks: list[tuple[str, float, int]], model: str
+) -> list[tuple[float, float, int, float]]:
+    """(band low, band high, n, observed rate) for each percentile band."""
+    out = []
+    for lo, hi in RANK_BANDS:
+        ys = [y for m, pct, y in ranks if m == model and lo <= pct < hi]
+        if ys:
+            out.append((lo, min(hi, 1.0), len(ys), sum(ys) / len(ys)))
     return out
 
 
@@ -411,6 +449,23 @@ def render_markdown(result: BacktestResult) -> str:
             *(f"| {name} | {value:.3f} |" for name, value in result.importance),
         ]
     for model in ("gbm", "cell"):
+        bands = hit_rates_by_rank(result.ranks, model)
+        if not bands:
+            continue
+        lines += [
+            "",
+            f"## Hit rate by rank: `{model}` (all test dates pooled)",
+            "",
+            "Companies grouped by where the model ranked them on their test date. This is the "
+            "number the site shows next to each company: how often companies ranked this high "
+            "actually had the outcome.",
+            "",
+            "| Rank band (percentile) | Companies | Observed |",
+            "|---|---|---|",
+            *(f"| {100 * lo:g}–{100 * hi:g} | {n:,} | {_pct(obs)} |" for lo, hi, n, obs in bands),
+        ]
+        break
+    for model in ("gbm", "cell"):
         table = calibration(result.predictions, model)
         if not table:
             continue
@@ -444,6 +499,44 @@ def render_markdown(result: BacktestResult) -> str:
     return "\n".join(lines) + "\n"
 
 
+def summarize(result: BacktestResult) -> dict:
+    """Machine-readable summary of a backtest (written next to the report)."""
+
+    def mean(model: str, key: str) -> float | None:
+        xs = [result.by_date[t][model][key] for t in result.test_dates]
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    present = [m for m in models() if m in result.by_date[result.test_dates[0]]]
+    keys = ("auc", "ap", "brier", "base_rate", *(f"p_at_{k}" for k in TOP_K))
+    return {
+        "label": result.label,
+        "horizon_months": result.horizon,
+        "test_dates": [t.isoformat() for t in result.test_dates],
+        "models": {m: {k: mean(m, k) for k in keys} for m in present},
+        "by_date": {
+            t.isoformat(): {m: result.by_date[t][m] for m in present} for t in result.test_dates
+        },
+        "hit_rate_by_rank": {
+            m: [
+                {"low": lo, "high": hi, "n": n, "observed": obs}
+                for lo, hi, n, obs in hit_rates_by_rank(result.ranks, m)
+            ]
+            for m in ("gbm", "cell")
+            if m in present
+        },
+        "calibration": {
+            m: [
+                {"low": lo, "high": hi, "n": n, "predicted": mp, "observed": obs}
+                for lo, hi, n, mp, obs in calibration(result.predictions, m)
+            ]
+            for m in ("gbm", "cell")
+            if m in present
+        },
+    }
+
+
 def write_report(result: BacktestResult, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_markdown(result))
+    path.with_suffix(".json").write_text(json.dumps(summarize(result), indent=1) + "\n")

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import duckdb
 
-from investup import backtest, digest, edgar, ledger, sec
+from investup import backtest, digest, edgar, export, ledger, sec
 from investup.formd import download, load
 
 DEFAULT_DB = Path("data/investup.duckdb")
@@ -91,6 +91,14 @@ def cmd_digest(args: argparse.Namespace) -> None:
     print(f"\nFull digest: {out}")
 
 
+def cmd_export(args: argparse.Namespace) -> None:
+    con = _connect(args.db)
+    sizes = export.export(con, args.out, model=args.model)
+    for name, size in sizes.items():
+        print(f"{name:<14} {size / 1e6:8.2f} MB")
+    print(f"\nSite data written to {args.out}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="investup")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -134,6 +142,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--top", type=int, default=25)
     p.add_argument("--out", type=Path, help="Default: docs/digests/<data end>.md")
     p.set_defaults(func=cmd_digest)
+
+    p = sub.add_parser("export", help="Write the JSON files the static site reads")
+    p.add_argument("--db", type=Path, default=DEFAULT_DB)
+    p.add_argument("--out", type=Path, default=Path("site/public/data"))
+    p.add_argument("--model", choices=("gbm", "cell"), help="Default: gbm if installed")
+    p.set_defaults(func=cmd_export)
 
     args = parser.parse_args(argv)
     args.func(args)
