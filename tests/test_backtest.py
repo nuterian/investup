@@ -51,3 +51,11 @@ def test_months_after_and_snapshot_dates():
         dt.date(2020, 7, 1),
         dt.date(2021, 1, 1),
     ]
+
+
+def test_calibration_bins():
+    preds = [("m", i / 100, int(i >= 50)) for i in range(100)] + [("other", 0.5, 1)]
+    table = backtest.calibration(preds, "m", bins=4)
+    assert [n for _, _, n, _, _ in table[:4]] == [25, 25, 25, 25]
+    assert table[0][4] == 0.0 and table[3][4] == 1.0
+    assert table[-1][2] == 3  # top 10% of the top bin

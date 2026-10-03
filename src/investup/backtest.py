@@ -198,6 +198,8 @@ class BacktestResult:
     test_dates: list[dt.date]
     by_date: dict[dt.date, dict[str, dict[str, float]]] = field(default_factory=dict)
     importance: list[tuple[str, float]] = field(default_factory=list)
+    # (model, prob, y) for every scored test row, pooled across test dates.
+    predictions: list[tuple[str, float, int]] = field(default_factory=list)
 
 
 def run(
@@ -231,6 +233,9 @@ def run(
         if gbm.available():
             result.importance = gbm.fit_and_score(con)  # keeps the latest test date's
         result.by_date[t] = evaluate(con)
+        result.predictions += con.execute(
+            "SELECT model, prob, y FROM scored WHERE prob IS NOT NULL AND model <> 'base_rate'"
+        ).fetchall()
     return result
 
 
@@ -296,6 +301,37 @@ def score_latest(
         [top],
     ).fetchall()
     return model, rows
+
+
+def calibration(
+    predictions: list[tuple[str, float, int]], model: str, bins: int = 10
+) -> list[tuple[float, float, int, float, float]]:
+    """Equal-count bins of predicted probability:
+    (low, high, n, mean predicted, observed rate)."""
+    rows = sorted((p, y) for m, p, y in predictions if m == model)
+    out = []
+    for b in range(bins):
+        chunk = rows[b * len(rows) // bins : (b + 1) * len(rows) // bins]
+        if chunk:
+            ps = [p for p, _ in chunk]
+            out.append(
+                (
+                    ps[0],
+                    ps[-1],
+                    len(chunk),
+                    sum(ps) / len(ps),
+                    sum(y for _, y in chunk) / len(chunk),
+                )
+            )
+    # Split the top bin further: that's where the headline probabilities live.
+    top = rows[(bins - 1) * len(rows) // bins :]
+    tail = top[len(top) * 9 // 10 :]
+    if tail:
+        ps = [p for p, _ in tail]
+        out.append(
+            (ps[0], ps[-1], len(tail), sum(ps) / len(ps), sum(y for _, y in tail) / len(tail))
+        )
+    return out
 
 
 def _pct(x: float | None) -> str:
@@ -374,6 +410,25 @@ def render_markdown(result: BacktestResult) -> str:
             "|---|---|",
             *(f"| {name} | {value:.3f} |" for name, value in result.importance),
         ]
+    for model in ("gbm", "cell"):
+        table = calibration(result.predictions, model)
+        if not table:
+            continue
+        lines += [
+            "",
+            f"## Calibration: `{model}` (all test dates pooled)",
+            "",
+            "Equal-size groups by predicted probability. A well-calibrated model's "
+            "*observed* rate matches its *mean predicted* rate. The last row is the top 1%.",
+            "",
+            "| Predicted range | Companies | Mean predicted | Observed |",
+            "|---|---|---|---|",
+            *(
+                f"| {_pct(lo)} – {_pct(hi)} | {n:,} | {_pct(mp)} | {_pct(obs)} |"
+                for lo, hi, n, mp, obs in table
+            ),
+        ]
+        break
     lines += [
         "",
         "## How to read this",

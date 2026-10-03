@@ -378,8 +378,15 @@ baselines.
       - `investup score` ranks today's private companies, with the reason for each score.
 - [x] LightGBM challenger (`gbm`) with per-company explanations from SHAP contributions.
       It beats every baseline in every test year; see the results below.
-- [ ] Size-aware label, e.g. "raises a larger round" or "raises at least $X". The top of
-      the `next_round` ranking favours small companies that raise often in small amounts.
+- [x] Size-aware `step_up` label: a new round of at least $5M and at least 1.5x the largest
+      round so far, within 18 months. Base rate about 5%; now the default label.
+- [x] `investup digest`: recent filers ranked by bigger-round and IPO odds, with reasons
+      (sample in `docs/digests/`)
+- [x] Calibration tables in the backtest reports
+- [ ] Acquisition tracking. The only reachable host is www.sec.gov; acquirer 8-K text
+      search lives on efts.sec.gov, and Wikidata isn't reachable from the environment.
+- [ ] Phase 4 product: API and TypeScript frontend (needs registry.npmjs.org in the
+      environment's allowed domains)
 - [ ] Form C as its own funding source, entity resolution across renamed CIKs,
       data-quality report
 
@@ -387,11 +394,13 @@ baselines.
 
 | Label | Base rate | Model | AUC | P@100 | P@1000 |
 |---|---|---|---|---|---|
+| Bigger round within 18 months | 4.8% | `cell` model | 0.658 | 10.7% | 11.0% |
+| Bigger round within 18 months | 4.8% | **`gbm`** | **0.765** | **17.8%** | **16.8%** |
 | New round within 18 months | ~20% | `recency` rule | 0.675 | 58.8% | 46.5% |
 | New round within 18 months | ~20% | `cell` model | 0.692 | 49.7% | 46.9% |
-| New round within 18 months | ~20% | **`gbm`** | **0.732** | **60.9%** | **49.9%** |
+| New round within 18 months | ~20% | **`gbm`** | **0.732** | **61.8%** | **49.7%** |
 | Went public within 36 months | ~0.8% | `cell` model | 0.812 | 13.1% | 6.3% |
-| Went public within 36 months | ~0.8% | **`gbm`** | **0.895** | **26.6%** | **8.9%** |
+| Went public within 36 months | ~0.8% | **`gbm`** | **0.894** | **27.1%** | **8.8%** |
 
 The IPO model's main drivers are state, total raised, sector, team size, last raise size
 and the team's prior IPO companies. Its live watchlist (2026-06-30) is mostly well-funded

@@ -33,8 +33,9 @@ export INVESTUP_USER_AGENT="Your Name you@example.com"
 uv run investup download   # Form D data sets + EDGAR indexes, 2008 to now (~430 MB)
 uv run investup load       # -> data/investup.duckdb (~2 minutes)
 uv run investup stats      # yearly coverage summary
-uv run investup backtest   # walk-forward backtest -> docs/BACKTEST.md
+uv run investup backtest   # walk-forward backtest -> docs/backtests/<label>.md
 uv run investup score      # rank today's private companies, with reasons
+uv run investup digest     # recent filers ranked by bigger-round and IPO odds -> docs/digests/
 ```
 
 The downloader finds each quarter's ZIP by reading the SEC's
@@ -59,31 +60,33 @@ uv run python -c "import duckdb; c = duckdb.connect('data/investup.duckdb'); \
 | `edgar_milestone` | First date each CIK filed a periodic report, an S-1/F-1, an IPO prospectus, fund forms, Form C or Reg A |
 | `venture_universe(as_of, months)` | The population we score: private, US, venture-sector, not a fund/SPV/LLP, raised within N months |
 | `features(as_of, months)` | Point-in-time model features, including the team's track record from Form D related persons |
-| `next_round_label`, `raised_again_label`, `went_public_label` `(as_of, months)` | Outcomes in the N months after `as_of` |
+| `step_up_label`, `next_round_label`, `raised_again_label`, `went_public_label` `(as_of, months)` | Outcomes in the N months after `as_of` |
 
 ## Results so far
 
-Walk-forward backtests over test years 2016–2024. Full tables are in
-[`docs/BACKTEST.md`](docs/BACKTEST.md) and
-[`docs/BACKTEST_went_public.md`](docs/BACKTEST_went_public.md).
+Walk-forward backtests over test years 2016–2024. Each year's model only sees outcomes
+known by that date. Full tables, per-year results, feature importance and calibration
+are in [`docs/backtests/`](docs/backtests/).
 
-| Question | Base rate | Model | AUC | Precision in top 100 | Precision in top 1,000 |
-|---|---|---|---|---|---|
-| Starts a new round within 18 months | ~20% | `cell` (baseline) | 0.692 | 49.7% | 46.9% |
-| | | **`gbm`** | **0.732** | **60.9%** | **49.9%** |
-| Goes public within 36 months | ~0.8% | `cell` (baseline) | 0.812 | 13.1% | 6.3% |
-| | | **`gbm`** | **0.895** | **26.6%** (34x lift) | **8.9%** |
+| Question | Base rate | Baseline (`cell`) AUC / P@100 | **`gbm`** AUC / P@100 |
+|---|---|---|---|
+| Raises a **bigger round** within 18 months: at least $5M and at least 1.5x its largest round so far | 4.8% | 0.658 / 10.7% | **0.765 / 17.8%** |
+| Starts any new round within 18 months | ~20% | 0.692 / 49.7% | **0.732 / 61.8%** |
+| Goes public within 36 months | 0.8% | 0.812 / 13.1% | **0.894 / 27.1%** |
 
-`gbm` (LightGBM) beats every baseline in every test year. `investup score` uses it by
-default and lists the features that pushed each score up most (from SHAP
-contributions).
+`gbm` (LightGBM) beats the baselines in every test year. `investup score` and
+`investup digest` use it by default and list the features that pushed each score up
+most (from SHAP contributions).
+
+[`docs/digests/2026-06-30.md`](docs/digests/2026-06-30.md) is a sample digest. It covers
+the 2,200 companies that filed in Q2 2026, ranked by bigger-round odds, with an IPO
+watch and the biggest raises (e.g. Baseten, Saronic, Ramp, Shield AI).
 
 **Known limitations:**
-- The `next_round` label rewards companies that file a new Form D for every small
-  raise, so the top of that ranking is dominated by serial small raisers. A size-aware
-  label is next.
 - Acquisitions aren't tracked yet, so a company that was bought can still show up.
 - "Went public" includes tiny self-filed S-1 listings, not only venture-backed IPOs.
+- Precision varies with the market. The bigger-round model's P@100 ranged from 35%
+  (2021) to 6% (2023).
 
 ## Development
 
