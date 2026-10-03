@@ -1,9 +1,3 @@
-/node_modules
-/public/js/build/.module-cache
-/data/companies
-/data/software
-
-# Python pipeline
 __pycache__/
 *.py[cod]
 .venv/
