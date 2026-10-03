@@ -42,7 +42,7 @@ download → load → score → export ──►  site/data/*.json  ──►  V
 | `universe.json` | Current scored universe (~22k rows): CIK, name, state, sector, last raise date, total raised, largest round, P(bigger round), P(IPO), percentiles | ~600 KB |
 | `lists.json` | The curated lists below (top 25 each) | < 50 KB |
 | `search.json` | Name + CIK + state + last filing year for every operating company that raised since 2015 (~120k), so lookup covers more than the scored universe | ~1.5 MB, loaded on first search |
-| `c/<shard>.json` | Company detail, split into 256 shards by CIK: raise timeline, people named on filings and their other companies, top reasons for each score, peers | ~5–15 KB per company |
+| `c/<shard>.json` | Company detail, split into 1,024 shards by CIK: raise timeline, people named on filings and their other companies | ~13 KB per shard |
 
 All scores come from `gbm`, using the same `score_current()` path as `investup digest`.
 

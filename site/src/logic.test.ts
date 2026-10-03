@@ -36,8 +36,8 @@ describe("data", () => {
     expect(fromColumnar<{ a: number; b: string }>({ columns: ["a", "b"], rows: [[1, "x"]] })).toEqual([
       { a: 1, b: "x" },
     ]);
-    expect(shardOf(1001)).toBe("e9");
-    expect(shardOf(256)).toBe("00");
+    expect(shardOf(1001)).toBe("3e9");
+    expect(shardOf(1024)).toBe("000");
   });
 });
 

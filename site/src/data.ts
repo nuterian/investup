@@ -146,7 +146,7 @@ export function loadSearch(): Promise<SearchEntry[]> {
 }
 
 export function shardOf(cik: number): string {
-  return (cik % 256).toString(16).padStart(2, "0");
+  return (cik % 1024).toString(16).padStart(3, "0");
 }
 
 export async function loadDetail(cik: number): Promise<Detail | null> {

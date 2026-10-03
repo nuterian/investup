@@ -9,8 +9,9 @@ Writes into ``out``:
 * ``lists.json``: the curated home-page lists.
 * ``search.json``: name index of every operating company that raised since
   ``details_since``.
-* ``c/<xx>.json``: company detail (funding timeline, facts, people and their
-  other companies), split into 256 shards by ``cik % 256``.
+* ``c/<xxx>.json``: company detail (funding timeline, facts, people and their
+  other companies), split into 1,024 shards by ``cik % 1024`` (about 13 KB
+  gzipped each).
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from pathlib import Path
 import duckdb
 
 from investup import backtest, features
+
+SHARDS = 1024
 
 VENTURE_EVENT = """
     is_venture_sector(sector)
@@ -63,13 +66,36 @@ def _columnar(columns: list[str], rows: list[tuple]) -> dict:
     return {"columns": columns, "rows": [list(r) for r in rows]}
 
 
+def monotone(bands: list[dict]) -> list[dict]:
+    """Pool adjacent bands (weighted by size) until hit rates never fall as rank
+    rises, so a higher-ranked company never shows lower odds. Small top bands
+    are otherwise noisy."""
+    blocks = [dict(b) for b in bands]
+    i = 0
+    while i < len(blocks) - 1:
+        a, b = blocks[i], blocks[i + 1]
+        if b["observed"] < a["observed"]:
+            n = a["n"] + b["n"]
+            merged = {
+                "low": a["low"],
+                "high": b["high"],
+                "n": n,
+                "observed": (a["observed"] * a["n"] + b["observed"] * b["n"]) / n,
+            }
+            blocks[i : i + 2] = [merged]
+            i = max(i - 1, 0)
+        else:
+            i += 1
+    return blocks
+
+
 def _bands(backtests: Path, label: str) -> list[dict]:
     path = backtests / f"{label}.json"
     if not path.exists():
         return []
     data = json.loads(path.read_text())
     bands = data.get("hit_rate_by_rank", {})
-    return bands.get("gbm") or bands.get("cell") or []
+    return monotone(bands.get("gbm") or bands.get("cell") or [])
 
 
 def hit_rate(bands: list[dict], pct: float | None) -> float | None:
@@ -434,7 +460,7 @@ def detail_shards(con: duckdb.DuckDBPyConnection, since: dt.date, end: dt.date) 
 
     shards: dict[str, dict] = defaultdict(dict)
     for cik, d in details.items():
-        shards[f"{cik % 256:02x}"][str(cik)] = d
+        shards[f"{cik % SHARDS:03x}"][str(cik)] = d
     return shards
 
 

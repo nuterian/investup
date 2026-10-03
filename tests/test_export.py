@@ -32,7 +32,7 @@ def test_export_writes_site_files(con, sample_quarters, tmp_path):
     search = json.loads((out / "search.json").read_text())
     assert [r[0] for r in search["rows"]] == [1001, 3003]
 
-    shard = json.loads((out / "c" / f"{1001 % 256:02x}.json").read_text())
+    shard = json.loads((out / "c" / f"{1001 % 1024:03x}.json").read_text())
     detail = shard["1001"]
     assert [t[1] for t in detail["timeline"]] == [2_000_000, 1_500_000, 5_000_000]
     assert detail["people"][0]["name"] == "Ada Lovelace"
@@ -50,3 +50,14 @@ def test_hit_rate_lookup():
     assert export.hit_rate(bands, 0.995) == 0.2
     assert export.hit_rate(bands, 1.0) == 0.2
     assert export.hit_rate(bands, None) is None
+
+
+def test_monotone_pools_out_of_order_bands():
+    bands = [
+        {"low": 0.0, "high": 0.9, "n": 90, "observed": 0.05},
+        {"low": 0.9, "high": 0.99, "n": 9, "observed": 0.20},
+        {"low": 0.99, "high": 1.0, "n": 1, "observed": 0.10},
+    ]
+    out = export.monotone(bands)
+    assert [(b["low"], b["high"], b["n"]) for b in out] == [(0.0, 0.9, 90), (0.9, 1.0, 10)]
+    assert out[1]["observed"] == (0.2 * 9 + 0.1) / 10
