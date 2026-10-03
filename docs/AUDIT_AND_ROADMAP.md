@@ -6,8 +6,9 @@ Investup is a 2015 class project (Node/Express + React 0.13 + D3) for searching 
 Crunchbase companies and showing each one a "success score" from per-category decision trees.
 It doesn't work as a product today, and what it predicted was never very meaningful:
 
-1. **It's dead.** Profile pages call the Crunchbase **v3** API, which has been retired. Any
-   failed call also crashes the whole server.
+1. **It's dead.** Profile pages call the Crunchbase **v3** `user_key` API with a 2015 key.
+   Crunchbase now offers only v4 under paid Enterprise or Applications licenses. Any failed
+   call also crashes the whole server.
 2. **The model leaks its label.** All 58 trees split first on `num_acquisitions ≥ 1 → success`,
    and age is the most-used feature after that. The model mostly learned "older companies that
    have already exited or acquired others are successful", which can't tell you anything about
@@ -56,8 +57,10 @@ reproduced.
 - **Server crash on any API failure.** `/profile` dereferences `profile.total_funding`
   without checking whether `saveProfile` returned `null` (`index.js:483`). I reproduced this:
   a failed Crunchbase request kills the process.
-- **Dead upstream.** The Crunchbase v3 `user_key` API has been retired, so every uncached
-  profile request fails.
+- **Dead upstream.** The API has moved to v4, which needs a paid Enterprise or Applications
+  license. The v3 endpoint with a 2015 key won't serve data, so every uncached profile
+  request fails. (I couldn't reach api.crunchbase.com from this sandbox, so this is inferred
+  rather than tested.)
 - `/stats` overwrites the shared in-memory index (`meta.s = profile.success.all`,
   `index.js:56`), so each call changes later search rankings.
 - The LRU cache never updates recency: it calls `queue.slice` where it needs `queue.splice`
@@ -103,3 +106,239 @@ reproduced.
 Everything else (code, model, data) should be replaced rather than upgraded.
 
 ---
+## 3. Research: data, science and market (2026)
+
+### 3.1 Is the Crunchbase data still available?
+
+- **Live Crunchbase (API v4 or daily CSV)** needs an Enterprise or Applications license.
+  Pricing is quote-only, and the license forbids redistributing the data. The free Basic tier
+  has no funding data, and it may no longer be offered (I found conflicting reports).
+  Crunchbase is fine for a private tool if you pay for it, but it can't power an open project.
+- **The old snapshots still exist:**
+  - Kaggle: 2013 snapshot (`justinas/startup-investments`, `mauriciocap/crunchbase2013`).
+  - GitHub: the 2015 export (`notpeter/crunchbase-data`, CC-BY-NC).
+
+  They're about a decade stale. They're useful as a **historical backtest set**, since we now
+  know how those companies turned out, but not as a product data source.
+
+### 3.2 Free, legally clean alternatives
+
+| Need | Source | Notes |
+|---|---|---|
+| US funding events | **SEC Form D** quarterly data sets (2008–2026) | Free. Covers Reg D raises: amount offered and sold, investor count, executives, industry, first-sale date. No valuations and no investor names. Not every startup files. |
+| US small raises | **SEC Form C** (Reg CF) data sets | Crowdfunding issuers, including their financials |
+| US exits | EDGAR S-1/424B (IPOs), 8-K (acquisitions by public companies), submissions JSON API | Free |
+| UK funding and failures | **Companies House API**: SH01 share allotments (UK funding rounds), dissolutions, accounts, officers | Free under the Open Government Licence. Dissolutions give real failure labels, which Crunchbase lacks. |
+| Entity resolution | GLEIF (CC0), Wikidata (CC0), company domains | Joins sources together. Wikidata also has notable acquisitions. |
+| Hiring velocity | Public ATS job-board APIs: Greenhouse, Lever, Ashby | No auth. Needs each company's board token. |
+| Dev traction | GH Archive | Stars, contributors and commit activity over time |
+| Attention | HN Algolia API, Product Hunt API (non-commercial), GDELT news | Free |
+| Web prominence | Tranco top-1M (CC-BY), Common Crawl host graph | Rough proxy, mostly useful for larger companies |
+| Labeled cohorts | `yc-oss/api` (YC directory JSON) | Licensing is grey. Attribute it and don't bulk-republish. |
+| **Avoid** | LinkedIn and Wellfound scraping (ToS; *hiQ v. LinkedIn* ended in an injunction), paid vendors' data in an open repo | |
+
+Commercial platforms (PitchBook, CB Insights, Dealroom, Harmonic, Specter, Tracxn) cost
+roughly $6k to over $100k a year according to third-party estimates. None of them allow
+redistribution.
+
+### 3.3 What the research says about predicting startup success
+
+- **Labels.** The field is moving from "eventual exit" toward **short-horizon milestones** like
+  "raises the next round within 12–24 months" (Loukas et al. 2022, arXiv:2210.14195, a review
+  of 29 studies). These milestones are observed sooner, there are more of them, and they're
+  less biased by survivorship.
+- **Features that matter** (meta-analysis, arXiv:2507.09675):
+  - firm basics (age, location, sector);
+  - investor quality and structure;
+  - funding history and momentum;
+  - digital traction.
+
+  Founder background matters a lot, but it mostly comes from LinkedIn-type data.
+- **Realistic performance.**
+  - A bias-free design with gradient boosting reaches about 57% precision and 34% recall
+    (Żbikowski & Antosiuk 2021).
+  - VCBench (arXiv:2509.14448) puts the base rate of "big outcomes" at about 1.9%, with top
+    models reaching about 29% precision.
+
+  So doing 3–10× better than the base rate is a good result. Anyone claiming "90% accuracy"
+  is leaking labels, which is exactly what Investup 2015 did.
+- **Pitfalls that the field agrees on:**
+  - Build every feature *as of* the prediction date, which means a point-in-time feature store.
+  - Split train and test by time, never randomly.
+  - Report Precision@N and calibration rather than accuracy.
+  - Watch for survivorship bias, since failed companies are under-recorded.
+
+### 3.4 Where the opportunity is
+
+Commercial "signal" tools (Harmonic, Specter, SignalFire Beacon, EQT Motherbrain) have shown
+that the valuable product is **early alerts from traction time series**, not a static score.
+They are closed, expensive and focused on US software.
+
+An individual or open project can stand out in four ways:
+
+1. **Built only from open records.** Every score traces back to public filings, so it's
+   reproducible and auditable.
+2. **Underserved coverage.** Companies that file Form D, Form C or UK SH01 but that vendors
+   miss: non-software, regional and crowdfunded companies.
+3. **Honest, published backtests.** "If you'd followed our top-50 list in 2019, here's what
+   happened."
+4. **An open dataset as a by-product.** A clean, CC0/OGL "private funding ledger"
+   (Form D + Companies House) is useful in its own right and builds credibility and traffic.
+
+---
+
+## 4. Product vision
+
+> **Investup: an open early-signal engine for private companies.**
+> It tracks every company that files a private raise in the US or UK, shows how fast each one
+> is moving compared with its peers, and estimates the chance it raises again or fails in the
+> next 18 months. Every number comes with the reasons behind it.
+
+**Primary users:**
+
+- Angels, scouts, and small or emerging VC funds that can't afford a $25k seat.
+- Secondary users: founders benchmarking against peers, journalists and researchers.
+
+**Core jobs:**
+
+1. **Discover:** "Show me Series-A-stage climate-hardware companies in the UK whose momentum
+   jumped this quarter."
+2. **Evaluate:** a company page with a funding timeline, peer percentile, calibrated
+   probabilities and the top drivers behind them.
+3. **Monitor:** watchlists and a weekly digest of new filings and momentum changes.
+
+## 5. Roadmap
+
+### Phase 0: Triage
+
+- [ ] **Revoke the Crunchbase key** in the Crunchbase account, then remove it from code. Load
+  secrets from environment variables.
+- [ ] Tag the current state as `v0-2015-classproject`, then move the old app into `legacy/` or
+  delete it.
+- [ ] Remove Crunchbase-derived data (`data/companies_index.json`, `data/trees/`) from the
+  default branch. That data can't be redistributed.
+- [ ] Add a LICENSE (e.g. MIT for code, CC0/OGL notes for data) and fix `package.json`
+  metadata, or replace it.
+
+### Phase 1: Open data foundation
+
+**Goal:** a reproducible, point-in-time **funding ledger**.
+
+- **Stack:**
+  - Python 3.12 and **DuckDB/Parquet** for storage, which is a single file and needs no
+    server.
+  - `uv` for environments.
+  - Scheduled pipelines through GitHub Actions or cron.
+- **Ingestors:**
+  1. SEC Form D quarterly sets (2008–present), parsed into issuers, offerings, amendments and
+     related persons.
+  2. SEC Form C.
+  3. Companies House: company profiles, SH01 allotments and dissolutions. Start with sectors
+     identified by SIC codes, since SH01 filings come per company.
+  4. EDGAR S-1/424B and 8-K exits.
+  5. Wikidata for exits and parent companies.
+- **Entity resolution:** CIK or company number as the primary key, plus normalized name, state
+  and executive overlap, and the domain once we have it. Store match confidence.
+- **Bitemporal tables:** every fact gets both `event_date` and `known_at` (filing date). This
+  one design decision is what prevents the look-ahead bias that broke the 2015 model.
+- **Deliverables:**
+  - `investup.duckdb`, plus a published, versioned open dataset.
+  - Data-quality report: coverage by year and sector, match rates.
+
+### Phase 2: An honest model
+
+**Goal:** calibrated, explainable probabilities that a backtest shows are better than
+baselines.
+
+- **Labels**, all observable from filings, at a fixed 18-month horizon from snapshot date *t*:
+  - **Raise again:** a new Form D or amendment with a higher amount sold, or a new SH01.
+  - **Fail:** dissolved, or no filings for a long period.
+  - **Exit:** IPO filing or 8-K acquisition, when available.
+- **Features as of *t* only:**
+  - age;
+  - sector and geography;
+  - raise count;
+  - cumulative and last raise size;
+  - months since last raise;
+  - **raise velocity z-score within sector and vintage** (the 2015 `getRateFromProfile` idea,
+    done properly);
+  - investor count;
+  - number of executives and directors, and their past companies' outcomes (a founder track
+    record built from Form D related persons);
+  - sector-level heat.
+- **Models:**
+  - Baselines first: base rate, and "last raise size" alone.
+  - Then LightGBM with isotonic calibration.
+  - SHAP for per-company explanations.
+- **Evaluation:**
+  - Rolling time splits (train ≤ 2018 → test 2019–20, and so on).
+  - Metrics: Precision@50/100, PR-AUC, Brier score, calibration plots, broken down by sector
+    and country.
+  - Publish a model card and a backtest report.
+- **Optional:** re-run the same pipeline on the 2013 Crunchbase snapshot as a sanity check
+  against known outcomes. Do this locally only and don't redistribute it.
+
+### Phase 3: Traction signals
+
+**Goal:** time-series signals that are known to lead funding.
+
+- Resolve domains for active companies using Form D, Companies House, Wikidata and search.
+- Take weekly snapshots of:
+  - open roles from Greenhouse, Lever and Ashby (hiring velocity);
+  - GitHub org activity (GH Archive);
+  - HN and GDELT mentions;
+  - Tranco rank.
+- These signals only exist from the day we start collecting them, so **start collecting
+  early**, even before Phase 2 is finished. Every week of delay is a week of history lost.
+- Add these signals as features after about 12 months of history, and as momentum alerts
+  right away.
+
+### Phase 4: Product
+
+- **Backend:** FastAPI over DuckDB, with search (DuckDB FTS, or Meilisearch if needed),
+  company, peers, screener and watchlist endpoints.
+- **Frontend:** a modern TypeScript SPA (React + Vite, or Next.js) that keeps the good 2015
+  ideas: search, company page, funding timeline chart, peer rank ("#3 of 41 in UK fintech,
+  2021 vintage"), and Hot and All-Star lists, now defined by calibrated momentum.
+- **Watchlists and a weekly email digest.** This is the feature that brings people back.
+- **LLM assist, where it helps and can be checked:**
+  - Classify issuers into a modern sector taxonomy from their website text. Form D's industry
+    codes are coarse.
+  - Write a short, cited summary of each company's filing history.
+  - The LLM never produces the score itself.
+- **Public read-only API and dataset downloads.**
+
+### Phase 5: Optional extensions
+
+- Add more countries with open registries (e.g. France's INPI and BODACC, Norway's
+  Brønnøysund registers, Singapore's ACRA).
+- A founder-network graph (people who appear across many filings).
+- If commercial demand shows up: licensed enrichment (Crunchbase or Specter) in a separate
+  private tier, kept strictly apart from the open core.
+
+## 6. How we'll know it's valuable
+
+| Area | Target |
+|---|---|
+| Model | Precision@100 for "raises again within 18 months" at **≥3× the base rate** on held-out years. Brier score better than the baseline. Calibration error under 5 points. |
+| Data | Over 90% of Form D issuers since 2015 resolved to a stable entity. UK SH01 coverage for the chosen sectors. |
+| Product | Weekly digest open rate. At least 10 real users (angels or scouts) who keep a watchlist. At least one "found it here first" story. |
+
+## 7. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Form D misses companies that raise without filing, and SAFE reporting is uneven | Combine with Companies House and traction signals. State coverage limits in the UI. |
+| Entity-resolution errors | Store match confidence. Let users flag and fix wrong matches. |
+| Labels are proxies (raising again ≠ success) | Show several outcomes (raise / fail / exit) instead of one "success" number |
+| Scraping and ToS exposure | Use only official APIs and bulk files. No LinkedIn or Wellfound. |
+| Scope creep for a solo builder | Phases 0–2 are useful on their own as an open dataset plus a backtest report. Ship them before building any UI. |
+
+## 8. Decisions needed from the owner
+
+1. **Audience and business model:** a personal tool for your own angel investing, an
+   open-source public good, or a commercial product? This decides whether Crunchbase or
+   vendor data is ever an option.
+2. **Geography:** US-only (Form D) first, or US + UK from the start?
+3. **Stack:** the plan assumes Python for data and ML plus a TypeScript frontend. Rewriting
+   everything in Node is possible, but the ML ecosystem is much weaker there.
