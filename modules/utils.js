@@ -3,7 +3,7 @@ var profileFeatures     = require('./profileFeatures');
 var ml                  = require('machine_learning');
 var fs                  = require('fs');
 
-var API_KEY = "26bb2c820b0842a99cba19563c196506";
+var API_KEY = process.env.CRUNCHBASE_API_KEY;
 
 function getOrganizationData(permalink, callback) {
 	var url = 'https://api.crunchbase.com/v/3/organizations/' + permalink + '?user_key=' + API_KEY;
