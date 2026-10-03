@@ -62,11 +62,15 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 
 def cmd_score(args: argparse.Namespace) -> None:
     con = _connect(args.db)
-    rows = backtest.score_latest(con, label=args.label, horizon=args.horizon, top=args.top)
+    model, rows = backtest.score_latest(
+        con, label=args.label, horizon=args.horizon, top=args.top, model=args.model
+    )
     if not rows:
         print("No companies to score.")
         return
-    print(f"Scored as of {rows[0][0]}: P({args.label} within {args.horizon} months)\n")
+    print(
+        f"Scored as of {rows[0][0]} with `{model}`: P({args.label} within {args.horizon} months)\n"
+    )
     for _as_of, cik, name, sector, prob, reason in rows:
         print(f"{prob:6.1%}  {name[:40]:<40} {sector:<12} CIK {cik}")
         print(f"        {reason}")
@@ -101,7 +105,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--out", type=Path, default=Path("docs/BACKTEST.md"))
     p.set_defaults(func=cmd_backtest)
 
-    p = sub.add_parser("score", help="Rank today's private companies with the cell model")
+    p = sub.add_parser("score", help="Rank today's private companies, with reasons")
+    p.add_argument("--model", choices=("gbm", "cell"), help="Default: gbm if installed")
     p.add_argument("--db", type=Path, default=DEFAULT_DB)
     p.add_argument("--label", choices=backtest.LABELS, default="next_round")
     p.add_argument("--horizon", type=int, default=18)

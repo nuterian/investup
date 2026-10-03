@@ -13,6 +13,8 @@ Models (all fitted in DuckDB, no ML dependencies):
   (raise count x recency x team track record x sector), smoothed toward the
   parent cell without sector. Calibrated, and the cell itself is the
   explanation.
+* ``gbm``: LightGBM on all features (see investup.gbm). Only runs when the
+  ``model`` extra is installed.
 """
 
 from __future__ import annotations
@@ -23,12 +25,18 @@ from pathlib import Path
 
 import duckdb
 
-from investup import features
+from investup import features, gbm
 
 LABELS = ("next_round", "raised_again", "went_public")
 ACTIVE_MONTHS = 36
 SMOOTHING = 30.0
-MODELS = ("base_rate", "recency", "cell")
+SQL_MODELS = ("base_rate", "recency", "cell")
+
+
+def models() -> tuple[str, ...]:
+    return (*SQL_MODELS, "gbm") if gbm.available() else SQL_MODELS
+
+
 TOP_K = (100, 500, 1000)
 
 CELL_SQL = """
@@ -189,6 +197,7 @@ class BacktestResult:
     horizon: int
     test_dates: list[dt.date]
     by_date: dict[dt.date, dict[str, dict[str, float]]] = field(default_factory=dict)
+    importance: list[tuple[str, float]] = field(default_factory=list)
 
 
 def run(
@@ -219,15 +228,23 @@ def run(
             train_where=f"as_of + to_months({horizon}) <= DATE '{t}'",
             test_where=f"as_of = DATE '{t}'",
         )
+        if gbm.available():
+            result.importance = gbm.fit_and_score(con)  # keeps the latest test date's
         result.by_date[t] = evaluate(con)
     return result
 
 
 def score_latest(
-    con: duckdb.DuckDBPyConnection, *, label: str = "next_round", horizon: int = 18, top: int = 25
-) -> list[tuple]:
-    """Score every company in today's universe with the cell model trained on all
-    snapshots whose outcomes are already known."""
+    con: duckdb.DuckDBPyConnection,
+    *,
+    label: str = "next_round",
+    horizon: int = 18,
+    top: int = 25,
+    model: str | None = None,
+) -> tuple[str, list[tuple]]:
+    """Score every company in today's universe with a model trained on all
+    snapshots whose outcomes are already known. Uses `gbm` when installed."""
+    model = model or ("gbm" if gbm.available() else "cell")
     features.build(con)
     end = data_end(con)
     train_dates = [
@@ -241,15 +258,18 @@ def score_latest(
         train_where=f"as_of + to_months({horizon}) <= DATE '{end}'",
         test_where=f"as_of = DATE '{end}'",
     )
-    return con.execute(
+    if model == "gbm":
+        gbm.fit_and_score(con)
+    rows = con.execute(
         """
         SELECT as_of, cik, entity_name, sector, prob, reason
-        FROM scored WHERE model = 'cell'
+        FROM scored WHERE model = ?
         ORDER BY score DESC, hash(cik)
         LIMIT ?
         """,
-        [top],
+        [model, top],
     ).fetchall()
+    return model, rows
 
 
 def _pct(x: float | None) -> str:
@@ -285,7 +305,8 @@ def render_markdown(result: BacktestResult) -> str:
         "| Model | AUC | Avg precision | P@100 | P@500 | P@1000 | Lift@100 | Brier |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for model in MODELS:
+    present = [m for m in models() if m in result.by_date[result.test_dates[0]]]
+    for model in present:
         vals = [result.by_date[t][model] for t in result.test_dates]
 
         def mean(key: str, vals=vals) -> float | None:
@@ -308,12 +329,23 @@ def render_markdown(result: BacktestResult) -> str:
         "|---|---|---|---|---|---|---|---|",
     ]
     for t in result.test_dates:
-        for model in MODELS:
+        for model in present:
             v = result.by_date[t][model]
             lines.append(
                 f"| {t} | {v['n']:,} | {_pct(v['base_rate'])} | `{model}` | {_num(v['auc'])} | "
                 f"{_pct(v['p_at_100'])} | {_pct(v['p_at_1000'])} | {_num(v['brier'])} |"
             )
+    if result.importance:
+        lines += [
+            "",
+            f"## What drives the `gbm` model (test date {result.test_dates[-1]})",
+            "",
+            "Mean absolute SHAP contribution (log-odds) per feature.",
+            "",
+            "| Feature | Mean \\|SHAP\\| |",
+            "|---|---|",
+            *(f"| {name} | {value:.3f} |" for name, value in result.importance),
+        ]
     lines += [
         "",
         "## How to read this",

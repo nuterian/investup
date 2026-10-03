@@ -376,8 +376,8 @@ baselines.
       - `investup backtest` runs a walk-forward backtest with AUC, AP, P@k and Brier
         (metrics are unit-tested).
       - `investup score` ranks today's private companies, with the reason for each score.
-- [ ] LightGBM challenger with per-company explanations. Blocked: PyPI is unreachable from
-      the current cloud environment.
+- [x] LightGBM challenger (`gbm`) with per-company explanations from SHAP contributions.
+      It beats every baseline in every test year; see the results below.
 - [ ] Size-aware label, e.g. "raises a larger round" or "raises at least $X". The top of
       the `next_round` ranking favours small companies that raise often in small amounts.
 - [ ] Form C as its own funding source, entity resolution across renamed CIKs,
@@ -389,7 +389,15 @@ baselines.
 |---|---|---|---|---|---|
 | New round within 18 months | ~20% | `recency` rule | 0.675 | 58.8% | 46.5% |
 | New round within 18 months | ~20% | `cell` model | 0.692 | 49.7% | 46.9% |
+| New round within 18 months | ~20% | **`gbm`** | **0.732** | **60.9%** | **49.9%** |
 | Went public within 36 months | ~0.8% | `cell` model | 0.812 | 13.1% | 6.3% |
+| Went public within 36 months | ~0.8% | **`gbm`** | **0.895** | **26.6%** | **8.9%** |
+
+The IPO model's main drivers are state, total raised, sector, team size, last raise size
+and the team's prior IPO companies. Its live watchlist (2026-06-30) is mostly well-funded
+therapeutics and medtech companies plus a few tech companies. The `next_round` live list
+is dominated by serial small filers, which is why the size-aware label is the next
+priority.
 
 For the 2019 test year, 193 of the 208 companies that went public did so through a priced
 IPO, so this label isn't dominated by shell listings. Twenty of the cell model's top 100

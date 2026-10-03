@@ -25,7 +25,7 @@ the chance it raises again in the next 18 months, with the reasons behind every 
 Needs Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync
+uv sync --extra model   # --extra model adds LightGBM; leave it out for the DuckDB-only models
 
 # The SEC requires a contact in the User-Agent for automated downloads.
 export INVESTUP_USER_AGENT="Your Name you@example.com"
@@ -67,13 +67,23 @@ Walk-forward backtests over test years 2016–2024. Full tables are in
 [`docs/BACKTEST.md`](docs/BACKTEST.md) and
 [`docs/BACKTEST_went_public.md`](docs/BACKTEST_went_public.md).
 
-| Question | Base rate | Best model | AUC | Precision in top 100 |
-|---|---|---|---|---|
-| Starts a new round within 18 months | ~20% | `cell` / `recency` | 0.69 | 50–59% |
-| Goes public within 36 months | ~0.8% | `cell` | 0.81 | 13% (17x lift) |
+| Question | Base rate | Model | AUC | Precision in top 100 | Precision in top 1,000 |
+|---|---|---|---|---|---|
+| Starts a new round within 18 months | ~20% | `cell` (baseline) | 0.692 | 49.7% | 46.9% |
+| | | **`gbm`** | **0.732** | **60.9%** | **49.9%** |
+| Goes public within 36 months | ~0.8% | `cell` (baseline) | 0.812 | 13.1% | 6.3% |
+| | | **`gbm`** | **0.895** | **26.6%** (34x lift) | **8.9%** |
 
-The models are deliberately simple so far: a hand rule and a smoothed "companies like
-this" lookup, both fitted in DuckDB. They set the bar a gradient-boosted model has to beat.
+`gbm` (LightGBM) beats every baseline in every test year. `investup score` uses it by
+default and lists the features that pushed each score up most (from SHAP
+contributions).
+
+**Known limitations:**
+- The `next_round` label rewards companies that file a new Form D for every small
+  raise, so the top of that ranking is dominated by serial small raisers. A size-aware
+  label is next.
+- Acquisitions aren't tracked yet, so a company that was bought can still show up.
+- "Went public" includes tiny self-filed S-1 listings, not only venture-backed IPOs.
 
 ## Development
 

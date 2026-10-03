@@ -9,6 +9,12 @@ dependencies = [
     "duckdb>=1.2",
 ]
 
+[project.optional-dependencies]
+model = [
+    "lightgbm>=4.5",
+    "numpy>=1.26",
+]
+
 [project.scripts]
 investup = "investup.cli:main"
 
