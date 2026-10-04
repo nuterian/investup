@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { CompanyLink, ErrorNote, Loading, ScorePill } from "../components/Bits";
+import { CompanyLink, ErrorNote, Loading, ScorePill, StarButton } from "../components/Bits";
 import { type Company, type Summary, loadSummary, loadUniverse } from "../data";
 import { date, money } from "../format";
 import { replaceParams } from "../router";
 import { useAsync } from "../useAsync";
+import { useWatchlist } from "../watchlist";
 
 type Sort = "step" | "ipo" | "raised" | "recent";
 
@@ -13,6 +14,8 @@ interface Filters {
   min: number; // minimum total raised, $
   within: number; // last raise within N months (0 = any)
   repeat: boolean;
+  starred: boolean;
+  q: string; // name contains
   sort: Sort;
 }
 
@@ -29,11 +32,20 @@ function readFilters(params: URLSearchParams): Filters {
     min: Number(params.get("min") ?? 0) || 0,
     within: Number(params.get("within") ?? 0) || 0,
     repeat: params.get("repeat") === "1",
+    starred: params.get("starred") === "1",
+    q: params.get("q") ?? "",
     sort: sort === "ipo" || sort === "raised" || sort === "recent" ? sort : "step",
   };
 }
 
-export function applyFilters(rows: Company[], f: Filters, dataEnd: string): Company[] {
+export function applyFilters(
+  rows: Company[],
+  f: Filters,
+  dataEnd: string,
+  watchlist: number[] = [],
+): Company[] {
+  const q = f.q.trim().toLowerCase();
+  const watch = new Set(watchlist);
   let cutoff = "";
   if (f.within) {
     const d = new Date(dataEnd);
@@ -46,7 +58,9 @@ export function applyFilters(rows: Company[], f: Filters, dataEnd: string): Comp
       (!f.state || c.state === f.state) &&
       (c.total_raised ?? 0) >= f.min &&
       (!cutoff || (c.last_raise ?? "") >= cutoff) &&
-      (!f.repeat || c.repeat_founder),
+      (!f.repeat || c.repeat_founder) &&
+      (!f.starred || watch.has(c.cik)) &&
+      (!q || c.name.toLowerCase().includes(q)),
   );
   const key: Record<Sort, (c: Company) => number | string> = {
     step: (c) => c.p_step ?? 0,
@@ -87,6 +101,30 @@ export function Explore({ params }: { params: URLSearchParams }) {
   return <Screener universe={universe} summary={summary} initial={readFilters(params)} />;
 }
 
+function SortHeader({
+  label,
+  sort,
+  f,
+  update,
+  num,
+}: {
+  label: string;
+  sort: Sort;
+  f: Filters;
+  update: (patch: Partial<Filters>) => void;
+  num?: boolean;
+}) {
+  const on = f.sort === sort;
+  return (
+    <th className={num ? "num" : ""} aria-sort={on ? "descending" : "none"}>
+      <button type="button" className={on ? "sort on" : "sort"} onClick={() => update({ sort })}>
+        {label}
+        <span aria-hidden="true">{on ? " ↓" : ""}</span>
+      </button>
+    </th>
+  );
+}
+
 function Screener({
   universe,
   summary,
@@ -97,11 +135,15 @@ function Screener({
   initial: Filters;
 }) {
   const [f, setF] = useState<Filters>(initial);
+  const [watch] = useWatchlist();
   const [shown, setShown] = useState(100);
   const all = useMemo(() => [...universe.values()], [universe]);
   const sectors = useMemo(() => [...new Set(all.map((c) => c.sector))].sort(), [all]);
   const states = useMemo(() => [...new Set(all.map((c) => c.state))].sort(), [all]);
-  const rows = useMemo(() => applyFilters(all, f, summary.data_end), [all, f, summary]);
+  const rows = useMemo(
+    () => applyFilters(all, f, summary.data_end, watch),
+    [all, f, summary, watch],
+  );
 
   const update = (patch: Partial<Filters>) => {
     const next = { ...f, ...patch };
@@ -113,14 +155,24 @@ function Screener({
       min: next.min || undefined,
       within: next.within || undefined,
       repeat: next.repeat ? 1 : undefined,
+      starred: next.starred ? 1 : undefined,
+      q: next.q || undefined,
       sort: next.sort === "step" ? undefined : next.sort,
     });
   };
 
   return (
-    <div className="stack">
+    <div className="stack fade-in">
       <h1>Explore</h1>
       <div className="filters">
+        <input
+          type="search"
+          className="name-filter"
+          placeholder="Filter by name"
+          aria-label="Filter by name"
+          value={f.q}
+          onChange={(e) => update({ q: e.target.value })}
+        />
         <select value={f.sector} onChange={(e) => update({ sector: e.target.value })} aria-label="Sector">
           <option value="">All sectors</option>
           {sectors.map((s) => (
@@ -155,12 +207,14 @@ function Screener({
           <input type="checkbox" checked={f.repeat} onChange={(e) => update({ repeat: e.target.checked })} />
           Repeat founders
         </label>
-        <select value={f.sort} onChange={(e) => update({ sort: e.target.value as Sort })} aria-label="Sort">
-          <option value="step">Sort: bigger-round odds</option>
-          <option value="ipo">Sort: IPO odds</option>
-          <option value="raised">Sort: total raised</option>
-          <option value="recent">Sort: most recent raise</option>
-        </select>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={f.starred}
+            onChange={(e) => update({ starred: e.target.checked })}
+          />
+          Watchlist only
+        </label>
       </div>
       <p className="muted small">
         {rows.length.toLocaleString()} companies
@@ -177,18 +231,22 @@ function Screener({
         <table className="table">
           <thead>
             <tr>
+              <th className="star-col" aria-label="Watch" />
               <th>Company</th>
               <th>Sector</th>
               <th>State</th>
-              <th>Last raise</th>
-              <th className="num">Total raised</th>
-              <th className="num">Bigger round</th>
-              <th className="num">IPO</th>
+              <SortHeader label="Last raise" sort="recent" f={f} update={update} />
+              <SortHeader label="Total raised" sort="raised" f={f} update={update} num />
+              <SortHeader label="Bigger round" sort="step" f={f} update={update} num />
+              <SortHeader label="IPO" sort="ipo" f={f} update={update} num />
             </tr>
           </thead>
           <tbody>
             {rows.slice(0, shown).map((c) => (
               <tr key={c.cik}>
+                <td className="star-col">
+                  <StarButton cik={c.cik} />
+                </td>
                 <td>
                   <CompanyLink cik={c.cik} name={c.name} />
                   {c.repeat_founder && <span className="tag">repeat</span>}
