@@ -32,14 +32,14 @@ export function Home({ params }: { params: URLSearchParams }) {
   );
 }
 
-function Row({ c, right }: { c: Company; right: ReactNode }) {
+function Row({ c, right, suffix = "" }: { c: Company; right: ReactNode; suffix?: string }) {
   return (
     <li className="row">
       <div className="row-main">
         <CompanyLink cik={c.cik} name={c.name} />
-        <span className="muted small">
+        <span className="muted small" title={c.total_raised ? `${money(c.total_raised)} raised in total` : undefined}>
           {c.sector} · {c.state}
-          {c.total_raised ? ` · ${money(c.total_raised)} raised` : ""}
+          {c.total_raised ? ` · ${money(c.total_raised)}${suffix}` : ""}
         </span>
       </div>
       <div className="row-right">
@@ -256,7 +256,12 @@ function Dashboard({
           {view.biggest.length ? (
             <ul className="rows">
               {view.biggest.slice(0, 8).map(({ c, new_money }) => (
-                <Row key={c.cik} c={c} right={<strong className="num">{money(new_money)}</strong>} />
+                <Row
+                  key={c.cik}
+                  c={c}
+                  suffix=" total"
+                  right={<strong className="num">{money(new_money)}</strong>}
+                />
               ))}
             </ul>
           ) : (
