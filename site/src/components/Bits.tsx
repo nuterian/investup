@@ -73,11 +73,19 @@ export function ScorePill({ c, kind, summary }: { c: Company; kind: ScoreKind; s
   if (s.hit == null) return <span className="muted">–</span>;
   return (
     <span
-      className={`pill heat-${heat(s.rank)}`}
+      className={`score-pill heat-${heat(s.rank)}`}
       title={`${s.text} of companies ranked here did it historically (${s.times} the average)`}
     >
-      <span className="pill-main">{s.text}</span>
-      <span className="pill-sub">{s.top}</span>
+      <span className="score-num">{s.text}</span>
+      <span className="score-rank">
+        <i className="heat-bar" aria-hidden="true">
+          <b />
+          <b />
+          <b />
+          <b />
+        </i>
+        {s.top}
+      </span>
     </span>
   );
 }

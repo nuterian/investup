@@ -296,7 +296,7 @@ nav a.active {
   min-width: 0;
 }
 .row-main > a,
-.row-main > span:first-child {
+.row-main > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -318,38 +318,45 @@ nav a.active {
   font-size: 0.85rem;
 }
 
-/* Score pill: hit rate, tinted by rank (heat-0 … heat-4). */
-.pill {
+/* Score: hit rate as a quiet number, rank as a small label with a 4-segment
+   heat bar (heat-0 … heat-4). No boxes: colour is reserved for the bar. */
+.score-pill {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-end;
-  min-width: 64px;
-  padding: 2px 8px;
-  border-radius: 6px;
+  min-width: 60px;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.pill-main {
-  font-weight: 650;
+.score-num {
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
-.pill-sub {
+.score-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.72rem;
   color: var(--muted);
 }
-.heat-1 {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+.heat-bar {
+  display: inline-flex;
+  gap: 2px;
 }
-.heat-2 {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+.heat-bar b {
+  width: 3px;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--line);
 }
-.heat-3 {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
+.heat-1 .heat-bar b:nth-child(-n + 1),
+.heat-2 .heat-bar b:nth-child(-n + 2),
+.heat-3 .heat-bar b:nth-child(-n + 3),
+.heat-4 .heat-bar b:nth-child(-n + 4) {
+  background: var(--accent);
 }
-.heat-4 {
-  background: color-mix(in srgb, var(--accent) 36%, transparent);
-}
-.heat-4 .pill-sub,
-.heat-3 .pill-sub {
+.heat-4 .score-rank {
   color: var(--text);
 }
 
