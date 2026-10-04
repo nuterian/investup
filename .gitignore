@@ -1,4 +1,13 @@
-/node_modules
-/public/js/build/.module-cache
-/data/companies
-/data/software
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+/data/raw/
+/data/*.duckdb
+/data/*.duckdb.wal
+
+# Site
+/site/node_modules/
+/site/dist/
+/site/public/data/
