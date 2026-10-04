@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Company, SearchEntry } from "./data";
 import { fromColumnar, shardOf } from "./data";
 import { change, date, money, multiple, pct, quarterLabel, topPct } from "./format";
+import { computeLists } from "./lists";
 import { applyFilters } from "./pages/Explore";
 import { search, tokens } from "./search";
 
@@ -88,7 +89,16 @@ describe("explore filters", () => {
     { ...base, cik: 2, name: "B", sector: "Health Care", total_raised: 50e6, last_raise: "2025-01-01", p_step: 0.4 },
     { ...base, cik: 3, name: "C", sector: "Technology", total_raised: 1e6, last_raise: "2026-06-01", p_step: 0.1, repeat_founder: true },
   ];
-  const f = { sector: "", state: "", min: 0, within: 0, repeat: false, sort: "step" as const };
+  const f = {
+    sector: "",
+    state: "",
+    min: 0,
+    within: 0,
+    repeat: false,
+    starred: false,
+    q: "",
+    sort: "step" as const,
+  };
 
   it("sorts by bigger-round odds by default", () => {
     expect(applyFilters([...rows], f, "2026-06-30").map((c) => c.cik)).toEqual([2, 1, 3]);
@@ -99,5 +109,67 @@ describe("explore filters", () => {
     expect(applyFilters([...rows], { ...f, min: 5e6 }, "2026-06-30").map((c) => c.cik)).toEqual([2, 1]);
     expect(applyFilters([...rows], { ...f, within: 12 }, "2026-06-30").map((c) => c.cik)).toEqual([1, 3]);
     expect(applyFilters([...rows], { ...f, repeat: true }, "2026-06-30").map((c) => c.cik)).toEqual([3]);
+    expect(applyFilters([...rows], { ...f, q: " b " }, "2026-06-30").map((c) => c.cik)).toEqual([2]);
+    expect(applyFilters([...rows], { ...f, starred: true }, "2026-06-30", [3, 1]).map((c) => c.cik)).toEqual([
+      1, 3,
+    ]);
+  });
+});
+
+describe("dashboard lists", () => {
+  const mk = (cik: number, over: Partial<Company>): Company => ({
+    cik,
+    name: `Co ${cik}`,
+    state: "CA",
+    sector: "Technology",
+    first_filing: "2020-01-01",
+    last_raise: "2026-05-01",
+    total_raised: 10e6,
+    largest_round: 5e6,
+    rounds: 2,
+    p_step: 0.1,
+    p_ipo: 0.01,
+    pct_step: 0.5,
+    pct_ipo: 0.5,
+    hit_step: 0.05,
+    hit_ipo: 0.01,
+    repeat_founder: false,
+    prev_p_step: null,
+    step_reason: null,
+    ipo_reason: null,
+    ...over,
+  });
+  const universe = new Map(
+    [
+      mk(1, { p_step: 0.3, prev_p_step: 0.1 }),
+      mk(2, { p_step: 0.5, sector: "Health Care", p_ipo: 0.4, prev_p_step: 0.45 }),
+      mk(3, { p_step: 0.9, last_raise: "2024-01-01" }), // not active in the last year
+      mk(4, { p_step: 0.2, repeat_founder: true, first_filing: "2026-02-01", total_raised: 1e6 }),
+    ].map((c) => [c.cik, c]),
+  );
+  const exported = {
+    step_up: [],
+    ipo_watch: [],
+    movers: [],
+    repeat_founders: [],
+    biggest: [
+      { cik: 2, new_money: 9e6 },
+      { cik: 1, new_money: 5e6 },
+    ],
+    ipo_pipeline: [{ cik: 99, name: "Not Scored Inc", filed: "2026-05-01" }],
+  };
+
+  it("ranks active companies and recomputes per sector", () => {
+    const all = computeLists(universe, exported, "2026-06-30");
+    expect(all.step_up.map((c) => c.cik)).toEqual([2, 1, 4]);
+    expect(all.ipo_watch.map((c) => c.cik)).toEqual([2, 1, 3]); // $5M+ raised only
+    expect(all.movers.map((c) => c.cik)).toEqual([1, 2]);
+    expect(all.repeat_founders.map((c) => c.cik)).toEqual([4]);
+    expect(all.ipo_pipeline.map((p) => p.cik)).toEqual([99]);
+
+    const tech = computeLists(universe, exported, "2026-06-30", "Technology");
+    expect(tech.step_up.map((c) => c.cik)).toEqual([1, 4]);
+    expect(tech.biggest.map((b) => b.c.cik)).toEqual([1]);
+    expect(tech.ipo_pipeline).toEqual([]);
   });
 });

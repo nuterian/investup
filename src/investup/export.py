@@ -237,7 +237,7 @@ def build_lists(
             FROM raise_event AS r
             JOIN x_features USING (cik)
             WHERE r.known_at > ? AND r.known_at <= ? AND NOT r.is_suspect_amount
-            GROUP BY r.cik ORDER BY m DESC, hash(r.cik) LIMIT {top}
+            GROUP BY r.cik ORDER BY m DESC, hash(r.cik) LIMIT {max(top, 300)}
             """,
             [prev, end],
         ).fetchall()
@@ -252,7 +252,7 @@ def build_lists(
             WHERE m.first_ipo_registration_at > ? AND m.first_ipo_registration_at <= ?
               AND cs.is_venture_sector AND is_us_state(cs.state)
               AND NOT cs.is_investment_company
-            ORDER BY cs.total_raised DESC NULLS LAST, hash(m.cik) LIMIT {top}
+            ORDER BY cs.total_raised DESC NULLS LAST, hash(m.cik) LIMIT {max(top, 200)}
             """,
             [prev, end],
         ).fetchall()

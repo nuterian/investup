@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Company, Summary } from "../data";
 import { multiple, pct, topPct } from "../format";
 import { companyHref } from "../router";
+import { useWatchlist } from "../watchlist";
 
 export function CompanyLink({ cik, name }: { cik: number; name: string }) {
   return <a href={companyHref(cik)}>{name}</a>;
@@ -57,22 +58,62 @@ export function scoreParts(c: Company, kind: ScoreKind, summary: Summary) {
   return { hit, rank, base, text: pct(hit), times: multiple(hit, base), top: topPct(rank) };
 }
 
+/** 0–4 tint level from rank: top 1% → 4, top 5% → 3, top 10% → 2, top 25% → 1. */
+export function heat(rank: number | null | undefined): number {
+  if (rank == null) return 0;
+  if (rank >= 0.99) return 4;
+  if (rank >= 0.95) return 3;
+  if (rank >= 0.9) return 2;
+  if (rank >= 0.75) return 1;
+  return 0;
+}
+
 export function ScorePill({ c, kind, summary }: { c: Company; kind: ScoreKind; summary: Summary }) {
   const s = scoreParts(c, kind, summary);
   if (s.hit == null) return <span className="muted">–</span>;
   return (
     <span
-      className="pill"
+      className={`pill heat-${heat(s.rank)}`}
       title={`${s.text} of companies ranked here did it historically (${s.times} the average)`}
     >
-      {s.text}
+      <span className="pill-main">{s.text}</span>
       <span className="pill-sub">{s.top}</span>
     </span>
   );
 }
 
-export function Loading() {
-  return <p className="muted">Loading…</p>;
+export function StarButton({ cik, label = false }: { cik: number; label?: boolean }) {
+  const [watch, toggle] = useWatchlist();
+  const on = watch.includes(cik);
+  return (
+    <button
+      type="button"
+      className={on ? "star on" : "star"}
+      aria-pressed={on}
+      aria-label={on ? "Remove from watchlist" : "Add to watchlist"}
+      title={on ? "Remove from watchlist" : "Add to watchlist"}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle(cik);
+      }}
+    >
+      {on ? "★" : "☆"}
+      {label && <span>{on ? " Watching" : " Watch"}</span>}
+    </button>
+  );
+}
+
+/** Placeholder rows shown while data loads. */
+export function Loading({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="skeleton" aria-busy="true" aria-label="Loading">
+      <span className="sk sk-title" />
+      {Array.from({ length: rows }, (_, i) => (
+        <span className="sk" key={i} style={{ width: `${92 - ((i * 13) % 30)}%` }} />
+      ))}
+    </div>
+  );
 }
 
 export function ErrorNote({ error }: { error: unknown }) {

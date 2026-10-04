@@ -1,5 +1,14 @@
-import { Card, ErrorNote, Loading, type ScoreKind, scoreParts } from "../components/Bits";
-import { Timeline } from "../components/Charts";
+import {
+  Card,
+  ErrorNote,
+  Loading,
+  type ScoreKind,
+  ScorePill,
+  StarButton,
+  heat,
+  scoreParts,
+} from "../components/Bits";
+import { RankMeter, Timeline } from "../components/Charts";
 import {
   type Company,
   type Detail,
@@ -13,7 +22,6 @@ import {
 import { date, money, pct } from "../format";
 import { companyHref } from "../router";
 import { useAsync } from "../useAsync";
-import { useWatchlist } from "../watchlist";
 
 export function CompanyPage({ cik }: { cik: number }) {
   const state = useAsync(
@@ -73,26 +81,42 @@ function ScoreBlock({
 }) {
   const s = scoreParts(c, kind, summary);
   const reason = kind === "step" ? c.step_reason : c.ipo_reason;
+  const bands = summary.track_record[kind === "step" ? "step_up" : "went_public"]?.hit_rate_by_rank;
   return (
-    <div className="score">
+    <div className={`score heat-edge-${heat(s.rank)}`}>
       <div className="score-head">
         <span className="score-title">{title}</span>
         <span className="muted small">{horizon}</span>
       </div>
       <div className="score-value">
         {s.text}
-        <span className="score-times">{s.times} typical</span>
+        <span className="score-times">{s.times} the average</span>
       </div>
+      <RankMeter bands={bands ?? []} rank={s.rank} />
       <p className="small">
-        Ranked <strong>{s.top}</strong>. Historically, {s.text} of companies ranked this high did
+        Ranked <strong>{s.top}</strong>. In backtests, {s.text} of companies ranked this high did
         it, vs {pct(s.base, kind === "ipo" ? 1 : 0)} for the average company.
       </p>
-      {reason && <p className="small muted">Why: {reason}</p>}
+      {reason && (
+        <ul className="reasons small">
+          {reason.split(" · ").map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-function Peers({ c, universe }: { c: Company; universe: Map<number, Company> }) {
+function Peers({
+  c,
+  universe,
+  summary,
+}: {
+  c: Company;
+  universe: Map<number, Company>;
+  summary: Summary;
+}) {
   const size = Math.log1p(c.total_raised ?? 0);
   const peers = [...universe.values()]
     .filter((u) => u.cik !== c.cik && u.sector === c.sector && u.state === c.state)
@@ -104,7 +128,10 @@ function Peers({ c, universe }: { c: Company; universe: Map<number, Company> }) 
     .slice(0, 5);
   if (!peers.length) return null;
   return (
-    <Card title="Similar companies" note={`${c.sector} in ${c.state}, closest in total raised.`}>
+    <Card
+      title="Similar companies"
+      note={`${c.sector} in ${c.state}, closest in total raised. Bigger-round and IPO odds.`}
+    >
       <ul className="rows">
         {peers.map((p) => (
           <li className="row" key={p.cik}>
@@ -112,8 +139,9 @@ function Peers({ c, universe }: { c: Company; universe: Map<number, Company> }) 
               <a href={companyHref(p.cik)}>{p.name}</a>
               <span className="muted small">{money(p.total_raised)} raised</span>
             </div>
-            <div className="row-right small">
-              bigger round {pct(p.hit_step)} · IPO {pct(p.hit_ipo, 1)}
+            <div className="row-right">
+              <ScorePill c={p} kind="step" summary={summary} />
+              <ScorePill c={p} kind="ipo" summary={summary} />
             </div>
           </li>
         ))}
@@ -135,13 +163,11 @@ function CompanyView({
   universe: Map<number, Company>;
   summary: Summary;
 }) {
-  const [watch, toggle] = useWatchlist();
-  const starred = watch.includes(cik);
   const filings = [...d.timeline].reverse();
   const largest = scored?.largest_round;
 
   return (
-    <div className="stack">
+    <div className="stack fade-in">
       <header className="company-head">
         <div>
           <h1>{d.name}</h1>
@@ -155,9 +181,7 @@ function CompanyView({
             </a>
           </p>
         </div>
-        <button type="button" className={starred ? "star on" : "star"} onClick={() => toggle(cik)}>
-          {starred ? "★ Watching" : "☆ Watch"}
-        </button>
+        <StarButton cik={cik} label />
       </header>
 
       {scored ? (
@@ -177,11 +201,7 @@ function CompanyView({
 
       <Card title="Funding">
         <Timeline
-          points={d.timeline.map(([filed, value, isNew]) => ({
-            date: filed,
-            value,
-            label: `${date(filed)}${isNew ? " (new round)" : ""}`,
-          }))}
+          points={d.timeline.map(([filed, value, isNew]) => ({ date: filed, value, isNew }))}
         />
         <dl className="facts">
           <div>
@@ -254,7 +274,7 @@ function CompanyView({
         </Card>
       )}
 
-      {scored && <Peers c={scored} universe={universe} />}
+      {scored && <Peers c={scored} universe={universe} summary={summary} />}
 
       <Card title="Form D filings">
         <div className="table-scroll">
